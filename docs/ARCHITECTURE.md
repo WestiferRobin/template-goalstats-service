@@ -163,6 +163,20 @@ Paths below are relative to `src/GoalStats.Template.Api/`.
 | Models/ | ItemModel, ActionModel and timestamped-entity contract | Models are not returned directly over HTTP |
 | Services/ | Validation, orchestration, Model → DTO conversion | No DbContext, raw Redis calls or HTTP response construction |
 
+UNIT TESTS FOLLOW LOGIC
+
+INTEGRATION TESTS FOLLOW BOUNDARIES
+
+SMOKE TESTS FOLLOW BUILT SYSTEM
+
+Controllers contain no business logic and are tested through integration, not a
+parallel unit delegation suite. Exception classes have unit contracts; the HTTP
+handler/pipeline has integration evidence. Models have unit object behavior and
+real database persistence evidence. Services have unit decisions and separate real
+provider collaboration coverage, often through HTTP/cache integration. Tests follow
+logic and boundaries rather than mirroring every production folder. The
+[testing matrix](TESTING.md#test-placement) defines each concern's ownership.
+
 `tests/GoalStats.Template.Api.UnitTests/` exercises isolated behavior; integration tests use
 hosted HTTP and real infrastructure where required. See the
 [operational test overview](DEVELOPMENT.md#test-overview) for running them.

@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.30" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../Support/FixtureCleanup.cs" Link="TestSupport/FixtureCleanup.cs" />
     <ProjectReference Include="../../src/GoalStats.Template.Api/GoalStats.Template.Api.csproj" />
   </ItemGroup>
 </Project>

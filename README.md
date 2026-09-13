@@ -115,6 +115,21 @@ Use `LOGS_ALL=1 make logs` for dependency logs too. Unsupported environments are
 rejected. Advanced image smoke, workflow certification, guarded reset, raw tools,
 and future parent-repository reuse are documented in [Development](docs/DEVELOPMENT.md).
 
+## Testing philosophy
+
+UNIT TESTS FOLLOW LOGIC
+
+INTEGRATION TESTS FOLLOW BOUNDARIES
+
+SMOKE TESTS FOLLOW BUILT SYSTEM
+
+Controllers are integration-only and contain no business logic. Unit tests isolate
+application decisions/contracts; integration tests prove framework/provider wiring.
+Smoke runs the built image; workflow certification checks persistence and cleanup.
+Use `make unit`, `make integration`, and `make test`; image smoke and workflow scripts
+remain separate. Test counts may change when coverage improves. See the
+[test placement matrix and five-question guide](docs/TESTING.md#mental-model).
+
 ## Architecture at a glance
 
 ```text

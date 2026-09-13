@@ -3,28 +3,12 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Xunit;
 
-namespace GoalStats.Template.Api.IntegrationTests.Fixtures;
+using GoalStats.Template.Api.IntegrationTests.Fixtures;
+
+namespace GoalStats.Template.Api.IntegrationTests.FixtureTests;
 
 public class PostgresFixtureTests
 {
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task Cleanup_WhenStepsFail_AttemptsDatabaseCleanupAndPreservesErrors(bool hostFails, bool databaseFails)
-    {
-        var hostError = new InvalidOperationException("host disposal");
-        var databaseError = new IOException("database cleanup");
-        var calls = new List<string>();
-        var error = await Record.ExceptionAsync(() => PostgresFixture.CleanupAsync(
-            () => { calls.Add("host"); return hostFails ? Task.FromException(hostError) : Task.CompletedTask; },
-            () => { calls.Add("database"); return databaseFails ? Task.FromException(databaseError) : Task.CompletedTask; }));
-        Assert.Equal(new[] { "host", "database" }, calls);
-        if (hostFails && databaseFails)
-            Assert.Equal(new Exception[] { hostError, databaseError }, Assert.IsType<AggregateException>(error).InnerExceptions);
-        else Assert.Same(hostFails ? hostError : databaseError, error);
-    }
-
     [Theory]
     [Trait("Category", "Postgres")]
     [InlineData(false, true)]

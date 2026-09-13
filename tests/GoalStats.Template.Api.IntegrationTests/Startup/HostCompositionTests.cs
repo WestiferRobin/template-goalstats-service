@@ -9,9 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace GoalStats.Template.Api.IntegrationTests.Fixtures;
+using GoalStats.Template.Api.IntegrationTests.Fixtures;
 
-public class ApplicationStartupTests
+namespace GoalStats.Template.Api.IntegrationTests.Startup;
+
+public class HostCompositionTests
 {
     [Fact]
     public void Application_starts_through_the_test_host()

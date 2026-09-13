@@ -10,15 +10,36 @@ and [infrastructure safety](#infrastructure-safety).
 
 ## Mental model
 
+UNIT TESTS FOLLOW LOGIC
+
+INTEGRATION TESTS FOLLOW BOUNDARIES
+
+SMOKE TESTS FOLLOW BUILT SYSTEM
+
 | Level | Meaning |
 | --- | --- |
-| UNIT | Isolated behavior, with deterministic doubles where needed |
-| INTEGRATION | A real framework/provider boundary: HTTP hosting, configuration, EF/PostgreSQL or Redis |
-| BOTH | Separate evidence is valuable at both levels |
-| NO DIRECT TEST | Passive interfaces/generated artifacts whose consumers and schema tests prove behavior |
+| UNIT | Isolated application-owned logic/contracts with deterministic collaborators; no hosted ASP.NET application, real PostgreSQL/Redis or external network |
+| INTEGRATION | Actual framework/provider collaboration: hosting, DI, routing, binding, configured serialization, exception handling, EF/PostgreSQL or Redis |
+| SMOKE | Built service/image, real startup and HTTP, health/readiness, representative behavior and dependency wiring |
+| WORKFLOW CERTIFICATION | Lifecycle, persistence, cleanup and controlled failure/interruption |
+| NO DIRECT TEST | Passive plumbing or generated artifacts whose consumers/schema tests prove the behavior |
 
-Test count and 100% line coverage are not the goal. A passing test should establish
-an observable requirement that could fail independently of the test implementation.
+Ordinary in-process DataAnnotations and JSON contract tests can be unit tests.
+The SDK container used by `make unit` is a launcher, not a provider dependency.
+Integration does not mean every test needs a database or Docker.
+
+The primary goal is **risk-based architectural behavior coverage**. Branch coverage
+is a secondary diagnostic; line coverage is a tertiary diagnostic. Neither a fixed
+test count nor 100% coverage is the goal. Protect data integrity, cancellation,
+service failures, cache consistency, provider outages, public contracts and cleanup.
+
+### Where does this test go?
+
+1. Does it start the built service and call the external interface? **SMOKE / WORKFLOW.**
+2. Does it require real ASP.NET hosting, DI, routing, binding, EF, PostgreSQL, Redis or another provider boundary? **INTEGRATION.**
+3. Can it prove an application-owned decision/contract with isolated inputs/doubles? **UNIT.**
+4. Does another test prove the same requirement through the same mechanism? **CONSOLIDATE.**
+5. Is it passive plumbing with no independent behavior? **NO DIRECT TEST.**
 
 ## Source-first test design
 
@@ -45,13 +66,14 @@ existing feature folders rather than creating another test project.
 
 | Subject | Established level | Evidence / placement |
 | --- | --- | --- |
-| DTO / Request | UNIT | Validation/serialization in unit `Dtos/`; HTTP binding indirectly in integration `Controllers/` |
+| DTO / Request | BOTH | Validation/serialization in unit `Dtos/`; HTTP binding indirectly in integration `Controllers/` |
 | Enum | UNIT | Meaningful values/validation in unit `Enums/`; public representation indirectly in HTTP/OpenAPI tests where relevant |
-| Model | UNIT + INTEGRATION | Meaningful defaults in unit `Models/`; persistence in integration `Infrastructure/Database/` |
+| Model | BOTH | Meaningful defaults in unit `Models/`; persistence in integration `Infrastructure/Database/` |
 | Mapper | UNIT | DTO → Response fields in unit `Mappers/` |
-| Service | UNIT | Validation, orchestration, mapping and cache policy in unit `Services/`; HTTP flows exercise services indirectly |
-| Controller | BOTH | Delegation/results in unit `Controllers/`; routing/binding/JSON/status/headers in integration `Controllers/` |
-| ApiExceptionHandler | BOTH | Exception classification/logging in unit `Exceptions/`; hosted ProblemDetails/error behavior in integration `Exceptions/` |
+| Service | BOTH | Unit business decisions, validation, ordering/cancellation and cache policy; existing HTTP/infrastructure integration proves real persistence/cache collaboration |
+| Controller | INTEGRATION | Production routes, binding, request abort, service failures, ownership, JSON/status/headers in integration `Controllers/` |
+| Exception classes | UNIT | Safe messages, identifiers and meaningful defaults in unit `Exceptions/` |
+| ApiExceptionHandler | INTEGRATION | Hosted ProblemDetails/error behavior and real registered writer/JSON boundary in integration `Exceptions/` |
 | CacheOptions | BOTH | Validation in unit `Infrastructure/Cache/`; binding and startup validation in integration `Startup/` |
 | RedisCache | BOTH | Timeout/cancellation/failure policy in unit `Infrastructure/Cache/`; real TTL, serialization and recovery in integration `Infrastructure/Cache/` |
 | ItemCache / ActionCache | BOTH | Resource keys/TTL/delegation in unit `Infrastructure/Cache/`; real roundtrips/isolation and HTTP cache behavior in integration `Infrastructure/Cache/` and `Controllers/` |
@@ -62,14 +84,59 @@ existing feature folders rather than creating another test project.
 | Health check | INTEGRATION | Real dependency/schema states and HTTP readiness/liveness in `Health/` |
 | Extensions | INTEGRATION | Registration, options and provider/host behavior in `Startup/` and relevant infrastructure tests |
 | Program / configuration | INTEGRATION | Actual hosting, middleware, endpoints and configuration through `Startup/`, `Controllers/`, `Exceptions/`, `OpenApi/` and `Health/` |
+| Properties/launchSettings.json | NO DIRECT TEST | Relevant launch/runtime behavior is checked indirectly by startup/workflows |
 | Interfaces | NO DIRECT TEST | Test implementations and consumers |
 | Generated migration designer / snapshot | NO DIRECT TEST | Verify through migration/model agreement and schema tests; review generated diffs |
 
-**BOTH does not mean duplicate assertions.** A controller unit test proves service
-delegation/result construction without ASP.NET hosting; a HTTP integration test
-proves routing, binding, JSON, status and headers. RedisCache unit tests use controlled
-provider outcomes to prove timeout/cancellation/failure policy; real Redis tests
-prove provider TTL, serialization and recovery. Use each boundary for its own evidence.
+### Architecture rules
+
+**CONTROLLERS: INTEGRATION.** Controllers stay thin: HTTP input → service invocation
+→ HTTP response. Business decisions belong in Services. There is no unit
+`Controllers/` suite for call counts, argument-forwarding matrices or concrete
+ActionResult types. Hosted tests prove the meaningful transport contract.
+
+Exception classes → unit; exception-to-HTTP handling → integration. Models have
+unit defaults/object behavior and database integration for persistence, relationships,
+constraints, timestamps and cascades. Services have isolated business behavior and
+real-provider collaboration evidence; existing HTTP/cache tests can supply that
+integration evidence without creating another `Services/` directory.
+
+**BOTH does not mean duplicate assertions.** For every test ask: **WHAT UNIQUE
+FAILURE MECHANISM DOES THIS TEST PROVE?** A fake Redis failure proves fallback
+policy; a real Redis outage proves provider failure integration. Mapping Name twice
+with the same in-memory mapper proves nothing new. Do not mock the boundary that
+an integration test claims to certify. Do not create mirrored integration Enums,
+Mappers, Models or Dtos directories, direct Properties tests, or fake EF repository
+unit tests merely for symmetry.
+
+### Infrastructure by actual concern
+
+| Production location | Policy | Unique responsibility |
+| --- | --- | --- |
+| Database/TemplateDbContext | INTEGRATION | Real EF state tracking, timestamp stamping and saves |
+| Database/Configurations | INTEGRATION | Actual model/schema constraints, indexes and relationships |
+| Database/Migrations | INTEGRATION | Application, rollback/reapplication and model agreement |
+| Database/Repositories/Item | INTEGRATION | PostgreSQL query ordering, tracking, writes and cancellation |
+| Database/Repositories/Action | INTEGRATION | Above plus FK behavior, ownership and races |
+| Database/PostgresHealthCheck | INTEGRATION | Provider/schema readiness and cancellation |
+| Cache/RedisCache | BOTH | Unit timeout/cancellation/fallback; real Redis payload, expiry and recovery |
+| Cache/CacheOptions | BOTH | Unit defaults/validation; actual binding/startup validation |
+| Cache/Item and Cache/Action | BOTH | Unit keys/TTL; real roundtrip, invalidation and isolation |
+| Cache/RedisHealthCheck | INTEGRATION | Real probe, degradation, cancellation and recovery |
+| Interfaces | NONE directly | Implementations/consumers own evidence |
+| Generated migration designer/snapshot | NONE directly | Migration/schema/model integration owns evidence |
+
+No separate pure health component is manufactured for test symmetry.
+
+### Directory ownership
+
+Unit folders follow logic: `Dtos`, `Enums`, `Exceptions`, `Infrastructure/Cache`,
+`Mappers`, `Models`, `Services`, `TestSupport`.
+Integration folders follow boundaries: `Controllers`, `Exceptions`, `Health`,
+`Infrastructure/Cache`, `Infrastructure/Database/Repositories`, `OpenApi`, `Startup`,
+`FixtureTests`. `Fixtures` contains helpers, not test classes. `tests/Support`
+contains linked pure test-support source shared by the two projects; UnitTests
+never references IntegrationTests. Create folders only when actual tests need them.
 
 ## Naming and deterministic unit tests
 
@@ -120,7 +187,21 @@ out of production registration and choose the smallest helper that proves the be
 | [RecordingCache](../tests/GoalStats.Template.Api.UnitTests/Infrastructure/Cache/RecordingCache.cs) | ICache double recording operation, key, type, value, TTL and token; supplies result/failure | Domain-cache wrapper delegation/key/TTL unit tests | Real Redis serialization/expiry/provider behavior |
 | [PendingCall](../tests/GoalStats.Template.Api.UnitTests/Services/PendingCall.cs) | Controlled async operation with started signal and explicit completion/failure; supports cancellation and releases pending work on disposal | Service completion ordering and failure/cancellation unit tests | Real database locks or provider timing certification |
 | [FakeDistributedCache](../tests/GoalStats.Template.Api.UnitTests/Infrastructure/Cache/FakeDistributedCache.cs) | Controlled distributed-cache payload, failure, pending operation, signals and recorded calls/options | RedisCache adapter policy without network access | Proving that Redis itself serializes, expires or recovers correctly |
-| [RecordingServices.cs](../tests/GoalStats.Template.Api.UnitTests/Controllers/RecordingServices.cs) | Contains RecordingItemService and RecordingActionService, recording calls/arguments/tokens and returning configured results/failures | Controller delegation/result unit tests | A class named RecordingServices, or evidence of real service orchestration/persistence |
+
+The shared [FixtureCleanup](../tests/Support/FixtureCleanup.cs) helper preserves both
+host-disposal and database-cleanup failures without skipping cleanup. Its pure
+orchestration is tested under unit `TestSupport`; owned database creation/disposal
+failures remain under integration `FixtureTests/PostgresFixtureTests`. Redis proxy
+observation belongs in `FixtureTests/RedisProxyTests`; production readiness stays
+in `Health`. Startup/DI evidence is under `Startup`, including `HostCompositionTests`.
+
+ControllerBoundaryTests uses a pending/failing service through real ASP.NET creation
+routes (Item, Action, nested Action). It observes actual RequestAborted propagation
+and safe public failures without duplicating business-rule matrices. A disconnected
+caller has no promised HTTP status. Existing CRUD tests retain Location, ownership,
+validation and empty-response evidence. ProblemWriterBoundaryTests uses real AddApi
+registration, ProblemDetailsService and JSON response behavior; it is not a fake
+ProblemDetailsService unit test moved without a new boundary.
 
 ## Infrastructure safety
 
@@ -156,6 +237,48 @@ Use `--filter FullyQualifiedName~YourTestName` with a `dotnet test` project comm
 for a focused regression. Filters do not supply missing infrastructure. The scripts
 are the normal full-suite/image entry points; `test.sh` accepts only optional `all` (default), `unit`, or `integration`,
 not arbitrary `dotnet test` arguments.
+
+### Certified baseline and historical counts
+
+These are certified results for the test architecture alignment, not permanent
+count requirements. All discovered cases must pass with no unexplained skips.
+
+| Suite | Historical baseline | Certified baseline |
+| --- | ---: | ---: |
+| Unit | 304 | 260 |
+| Integration | 271 | 276 |
+| Total | 575 | 536 |
+
+`make unit`, `make integration` and `make test` all passed in the working checkout
+and a disposable fresh macOS candidate cloned from the canonical remote with the
+intended changes applied. Both runs agreed on 0 failures and 0 skips. The eight
+focused controller/writer replacement cases also passed without provider access
+during alignment.
+
+The fresh candidate passed setup, solution build (0 warnings / 0 errors), API
+publish and EF checks for `TemplateDbContext` and
+`20260908043250_InitialCreate`, with no pending model changes. Public Make
+build/migrate/run/stop/restart workflows passed for LOCAL (Development) and DEV
+(Staging, built runtime without source mounts), including Swagger, health/readiness,
+Item/Action CRUD, cache invalidation, cascades and persistence.
+
+The existing smoke and workflow certification scripts passed. LOCAL/DEV sentinel
+rows survived normal TEST/smoke runs, two controlled failures per script and SIGTERM
+cleanup. Before/after container, network, volume and image inventories matched;
+only certification-owned resources were used. Production source, schema, HTTP/cache
+contracts, runtime topology, Make interface and template identity remain unchanged.
+
+The unit delta is 304 − 39 controller cases − 8 handler cases + 3 pure cleanup
+cases = 260. The integration delta is 271 + 6 hosted controller cases + 2 real
+writer-boundary cases − 3 pure cleanup cases = 276.
+
+Of the removed coverage, 6 controller methods / 15 cases and 1 handler theory /
+6 cases duplicated existing boundary evidence. The remaining 3 controller methods /
+24 cases became 2 hosted theories / 6 cases proving request abort, safe service
+failure and nested ownership. The 2 unique writer cases were rewritten against
+real framework boundaries; the 3 pure cleanup cases moved to unit. Startup,
+real database fixture failure and Redis proxy observation moves preserve their
+case counts. The total decrease of 39 reflects consolidation, not a coverage target.
 
 ### TEST credentials and cleanup
 
