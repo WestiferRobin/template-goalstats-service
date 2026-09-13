@@ -4,9 +4,9 @@ cd "$(dirname "$0")/.."
 case "${ENV-local}" in local|dev) ;; *) echo "Unsupported ENV=${ENV}. Use local or dev." >&2; exit 2 ;; esac
 # Select a project without duplicating provider provisioning or cleanup.
 case "${1:-all}" in
-  all) target=Service.sln ;;
-  unit) target=tests/Service.Api.UnitTests/Service.Api.UnitTests.csproj ;;
-  integration) target=tests/Service.Api.IntegrationTests/Service.Api.IntegrationTests.csproj ;;
+  all) target=GoalStats.Template.sln ;;
+  unit) target=tests/GoalStats.Template.Api.UnitTests/GoalStats.Template.Api.UnitTests.csproj ;;
+  integration) target=tests/GoalStats.Template.Api.IntegrationTests/GoalStats.Template.Api.IntegrationTests.csproj ;;
   *) echo 'Usage: scripts/test.sh [all|unit|integration]' >&2; exit 2 ;;
 esac
 [[ $# -le 1 ]] || { echo 'Usage: scripts/test.sh [all|unit|integration]' >&2; exit 2; }
@@ -38,10 +38,10 @@ for value in "$POSTGRES_USER" "$POSTGRES_PASSWORD"; do
   }
 done
 # Override inherited LOCAL/DEV configuration. Docker assigns available host ports.
-export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB=service_test POSTGRES_PORT=0 REDIS_PORT=0
-export ASPNETCORE_ENVIRONMENT=Testing Cache__KeyPrefix=service-test
+export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB=goalstats_template_test POSTGRES_PORT=0 REDIS_PORT=0
+export ASPNETCORE_ENVIRONMENT=Testing Cache__KeyPrefix=goalstats-template-test
 unset DOTNET_ENVIRONMENT OpenApi__Enabled
-project="service-test-$(date +%s)-$$-$RANDOM"
+project="goalstats-template-test-$(date +%s)-$$-$RANDOM"
 tool_image="$project-tooling"
 tool_container="$project-tooling"
 compose=(docker compose --env-file /dev/null -p "$project" -f docker/compose.test.yml)
@@ -67,7 +67,7 @@ if [[ ${1:-all} != unit ]]; then
   "${compose[@]}" config --quiet
   "${compose[@]}" up -d --wait --wait-timeout 60
 fi
-export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=service_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
+export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=goalstats_template_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
 export ConnectionStrings__Redis="redis:6379,connectTimeout=1000,asyncTimeout=1000,connectRetry=0"
 # Deterministic certification checkpoint after provisioning (default OFF).
 echo "Workflow resources: $project"
@@ -77,7 +77,7 @@ case "${SERVICE_WORKFLOW_CERTIFICATION:-}" in
 esac
 echo "Test target: $target"
 network=(--network none)
-environment=(-e ASPNETCORE_ENVIRONMENT=Testing -e Cache__KeyPrefix=service-test)
+environment=(-e ASPNETCORE_ENVIRONMENT=Testing -e Cache__KeyPrefix=goalstats-template-test)
 if [[ ${1:-all} != unit ]]; then
   network=(--network "${project}_default")
   environment+=(-e ConnectionStrings__Postgres -e ConnectionStrings__Redis)

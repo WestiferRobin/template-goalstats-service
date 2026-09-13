@@ -1,4 +1,9 @@
-# Service.Api Template
+# GoalStats.Template.Api Template
+
+Template identity is `GoalStats.Template.*` with `TemplateDbContext`. The intended
+future concrete convention is `GoalStats.<DOMAIN>.*` with `<DOMAIN>DbContext`
+(for example `GoalStats.User.*` / `UserDbContext`). DOMAIN-aware parent scaffolding
+is planned, not yet released.
 
 A reusable .NET 8 REST service template backed by PostgreSQL and Redis. Item is
 an example parent; Action is stored child data, not executable behavior. This is

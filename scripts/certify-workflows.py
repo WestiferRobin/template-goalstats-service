@@ -93,7 +93,7 @@ def ready(base):
 class Workflow:
     def __init__(self, mode):
         self.mode = mode
-        self.project = f'service-cert-{mode}-{RUN}'
+        self.project = f'goalstats-template-cert-{mode}-{RUN}'
         self.env = dict(ENV)
         self.compose = ['docker', 'compose', '--env-file', '/dev/null', '-p', self.project,
                         '-f', f'docker/compose.{mode}.yml']
@@ -108,7 +108,7 @@ class Workflow:
 
     def sql(self, query):
         return self.call('exec', '-T', 'postgres', 'psql', '-U', 'service', '-d',
-                         f'service_{self.mode}', '-Atc', query).strip()
+                         f'goalstats_template_{self.mode}', '-Atc', query).strip()
 
     def redis(self, *args):
         return self.call('exec', '-T', 'redis', 'redis-cli', *args).strip()
@@ -116,24 +116,24 @@ class Workflow:
     def config(self):
         config = json.loads(self.call('config', '--format', 'json'))
         services = config['services']
-        assert set(services) == {'postgres', 'redis', 'service-api'}
-        ports = {'postgres': 55432, 'redis': 56379, 'service-api': 5080} if self.mode == 'local' else {
-            'postgres': 25432, 'redis': 26379, 'service-api': 18080}
+        assert set(services) == {'postgres', 'redis', 'goalstats-template-api'}
+        ports = {'postgres': 55432, 'redis': 56379, 'goalstats-template-api': 5080} if self.mode == 'local' else {
+            'postgres': 25432, 'redis': 26379, 'goalstats-template-api': 18080}
         for name, service in services.items():
             assert 'container_name' not in service
             assert service['ports'][0]['host_ip'] == '127.0.0.1'
             assert int(service['ports'][0]['published']) == ports[name]
-        assert services['postgres']['environment']['POSTGRES_DB'] == f'service_{self.mode}'
+        assert services['postgres']['environment']['POSTGRES_DB'] == f'goalstats_template_{self.mode}'
         assert services['postgres']['volumes'][0]['type'] == 'volume'
         assert services['redis']['tmpfs'] == ['/data']
         assert services['redis']['command'] == ['redis-server', '--save', '', '--appendonly', 'no']
         if self.mode == 'dev':
-            api = services['service-api']
+            api = services['goalstats-template-api']
             assert api['build']['dockerfile'] == 'Dockerfile'
             assert api['ports'][0]['target'] == 8080
             assert api['environment']['ASPNETCORE_ENVIRONMENT'] == 'Staging'
             assert api['environment']['OpenApi__Enabled'] == 'true'
-            assert api['environment']['Cache__KeyPrefix'] == 'service-dev'
+            assert api['environment']['Cache__KeyPrefix'] == 'goalstats-template-dev'
             assert 'Host=postgres;' in api['environment']['ConnectionStrings__Postgres']
             assert api['environment']['ConnectionStrings__Redis'].startswith('redis:6379,')
             assert all(api['depends_on'][name]['condition'] == 'service_healthy'
@@ -142,7 +142,7 @@ class Workflow:
             copied[copied.index('-p') + 1] += '-copy'
             alternative = json.loads(run(copied + ['config', '--format', 'json'],
                 dict(self.env, API_PORT='28080', POSTGRES_PORT='35432', REDIS_PORT='36379')))
-            assert int(alternative['services']['service-api']['ports'][0]['published']) == 28080
+            assert int(alternative['services']['goalstats-template-api']['ports'][0]['published']) == 28080
             assert int(alternative['services']['postgres']['ports'][0]['published']) == 35432
             assert int(alternative['services']['redis']['ports'][0]['published']) == 36379
             assert alternative['volumes']['postgres-data']['name'] != config['volumes']['postgres-data']['name']
@@ -150,8 +150,8 @@ class Workflow:
         return ports
 
     def start_api(self, build=False):
-        self.call('up', '-d', *(['--build'] if build else []), 'service-api')
-        api_id = self.call('ps', '-q', 'service-api').strip()
+        self.call('up', '-d', *(['--build'] if build else []), 'goalstats-template-api')
+        api_id = self.call('ps', '-q', 'goalstats-template-api').strip()
         actual = json.loads(run(['docker', 'inspect', api_id]))[0]
         environment = 'Development' if self.mode == 'local' else 'Staging'
         assert f'ASPNETCORE_ENVIRONMENT={environment}' in actual['Config']['Env']
@@ -179,8 +179,8 @@ class Workflow:
         try:
             run(['docker', 'build', '--target', 'tooling', '-t', tool_image, '.'])
             run(['docker', 'run', '--rm', '--network', f'{self.project}_default',
-                 '-e', f'ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=service_{self.mode};Username=service;Password=workflow_test_only',
-                 tool_image, 'dotnet', 'ef', 'database', 'update', '--project', 'src/Service.Api'])
+                 '-e', f'ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=goalstats_template_{self.mode};Username=service;Password=workflow_test_only',
+                 tool_image, 'dotnet', 'ef', 'database', 'update', '--project', 'src/GoalStats.Template.Api'])
         finally:
             run(['docker', 'image', 'rm', tool_image])
         self.start_api(build=True)
@@ -224,13 +224,13 @@ class Workflow:
         for _ in range(2):
             assert json.loads(request(base, 'GET', path)[0])['name'] == item['name']
             assert json.loads(request(base, 'GET', action_path)[0])['itemId'] == item['id']
-        assert self.redis('EXISTS', f'service-{self.mode}:items:{item["id"]}') == '1'
-        assert self.redis('EXISTS', f'service-{self.mode}:actions:{action["id"]}') == '1'
+        assert self.redis('EXISTS', f'goalstats-template-{self.mode}:items:{item["id"]}') == '1'
+        assert self.redis('EXISTS', f'goalstats-template-{self.mode}:actions:{action["id"]}') == '1'
         request(base, 'PUT', path, 200, {'name': 'updated', 'status': 'archived'})
-        assert self.redis('EXISTS', f'service-{self.mode}:items:{item["id"]}') == '0'
+        assert self.redis('EXISTS', f'goalstats-template-{self.mode}:items:{item["id"]}') == '0'
         assert json.loads(request(base, 'GET', path)[0])['status'] == 'archived'
         request(base, 'PUT', action_path, 200, {'name': 'updated', 'type': 'update'})
-        assert self.redis('EXISTS', f'service-{self.mode}:actions:{action["id"]}') == '0'
+        assert self.redis('EXISTS', f'goalstats-template-{self.mode}:actions:{action["id"]}') == '0'
         assert json.loads(request(base, 'GET', action_path)[0])['type'] == 'update'
         assert any(row['id'] == action['id'] for row in json.loads(request(base, 'GET', '/actions')[0]))
         assert any(row['id'] == item['id'] for row in json.loads(request(base, 'GET', '/items')[0]))
@@ -239,7 +239,7 @@ class Workflow:
         request(base, 'GET', path, 404)
         request(base, 'GET', action_path, 404)
         request(base, 'GET', path + '/actions', 404)
-        assert self.redis('EXISTS', f'service-{self.mode}:actions:{action["id"]}') == '0'
+        assert self.redis('EXISTS', f'goalstats-template-{self.mode}:actions:{action["id"]}') == '0'
         assert self.sql('SELECT count(*) FROM "Items"') == '0'
         assert self.sql('SELECT count(*) FROM "Actions"') == '0'
         print(f'{self.mode.upper()} actual workflow, Swagger, CRUD, cache and cascade: passed', flush=True)
@@ -265,14 +265,14 @@ def certify_script(name, mode, expected):
     before = inventory()
     states = container_states(before['containers'])
     output = run([f'./scripts/{name}.sh'], dict(ENV, SERVICE_WORKFLOW_CERTIFICATION=mode), expected, timeout=600)
-    matches = re.findall(r'Workflow resources: (service-(?:test|smoke)-[a-z0-9-]+)', output)
+    matches = re.findall(r'Workflow resources: (goalstats-template-(?:test|smoke)-[a-z0-9-]+)', output)
     assert len(matches) == 1, 'Missing owned-resource checkpoint'
     project = matches[0]
     assert inventory() == before, f'Resources leaked by {name}/{mode}: {project}'
     assert container_states(before['containers']) == states, 'Unrelated container was restarted'
     if name == 'smoke':
         assert 'Docker smoke passed' in output
-        assert not run(['docker', 'image', 'ls', '-q', f'service-api:{project}']).strip()
+        assert not run(['docker', 'image', 'ls', '-q', f'goalstats-template-api:{project}']).strip()
     if mode:
         assert 'Certification:' in output and ('postgres' in output and 'redis' in output)
         if name == 'smoke':
@@ -294,7 +294,7 @@ def main():
             listener.bind(('127.0.0.1', port))
     local, dev = Workflow('local'), Workflow('dev')
     try:
-        test_config = json.loads(run(['docker', 'compose', '--env-file', '/dev/null', '-p', f'service-cert-test-{RUN}',
+        test_config = json.loads(run(['docker', 'compose', '--env-file', '/dev/null', '-p', f'goalstats-template-cert-test-{RUN}',
                                      '-f', 'docker/compose.test.yml', 'config', '--format', 'json']))
         assert set(test_config['services']) == {'postgres', 'redis'}
         assert all('container_name' not in service for service in test_config['services'].values())
@@ -309,7 +309,7 @@ def main():
             certify_script(name, 'term', 143)
         for workflow in (local, dev):
             assert json.loads(request(workflow.base, 'GET', '/items/' + workflow.item['id'])[0])['name'] == workflow.item['name']
-            assert workflow.sql('SELECT current_database()') == f'service_{workflow.mode}'
+            assert workflow.sql('SELECT current_database()') == f'goalstats_template_{workflow.mode}'
         print('LOCAL/DEV sentinel rows survived all TEST/smoke runs.', flush=True)
     finally:
         try:

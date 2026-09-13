@@ -1,7 +1,7 @@
-name: service-dev
+name: goalstats-template-dev
 
 services:
-  service-api:
+  goalstats-template-api:
     build:
       context: ..
       dockerfile: Dockerfile
@@ -9,9 +9,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
       OpenApi__Enabled: "true"
-      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-service_dev};Username=${POSTGRES_USER:-service};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the explicit env file}"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-goalstats_template_dev};Username=${POSTGRES_USER:-service};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the explicit env file}"
       ConnectionStrings__Redis: "redis:6379,connectTimeout=1000,asyncTimeout=1000,connectRetry=0"
-      Cache__KeyPrefix: service-dev
+      Cache__KeyPrefix: goalstats-template-dev
     ports:
       - "127.0.0.1:${API_PORT:-18080}:8080"
     depends_on:
@@ -23,7 +23,7 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-service_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-goalstats_template_dev}
       POSTGRES_USER: ${POSTGRES_USER:-service}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the explicit env file}
     ports:

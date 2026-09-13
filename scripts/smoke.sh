@@ -29,12 +29,12 @@ for value in "$POSTGRES_USER" "$POSTGRES_PASSWORD"; do
   }
 done
 # Override inherited LOCAL/DEV configuration. Docker assigns available host ports.
-export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB=service_test POSTGRES_PORT=0 REDIS_PORT=0
-export ASPNETCORE_ENVIRONMENT=Testing Cache__KeyPrefix=service-test
+export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB=goalstats_template_test POSTGRES_PORT=0 REDIS_PORT=0
+export ASPNETCORE_ENVIRONMENT=Testing Cache__KeyPrefix=goalstats-template-test
 unset DOTNET_ENVIRONMENT OpenApi__Enabled
-project="service-smoke-$(date +%s)-$$-$RANDOM"
+project="goalstats-template-smoke-$(date +%s)-$$-$RANDOM"
 api_container="${project}-api"
-image="service-api:${project}"
+image="goalstats-template-api:${project}"
 tool_image="${project}-tooling"
 tool_container="${project}-tooling"
 compose=(docker compose --env-file /dev/null -p "$project" -f docker/compose.test.yml)
@@ -68,15 +68,15 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 "${compose[@]}" config --quiet
 "${compose[@]}" up -d --wait --wait-timeout 60
-export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=service_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
+export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=goalstats_template_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
 export ConnectionStrings__Redis="redis:6379,connectTimeout=1000,asyncTimeout=1000,connectRetry=0"
 docker build --target tooling -t "$tool_image" .
 docker run --rm --name "$tool_container" --network "${project}_default" \
   -e ConnectionStrings__Postgres -e ASPNETCORE_ENVIRONMENT=Testing \
-  "$tool_image" dotnet ef database update --project src/Service.Api
+  "$tool_image" dotnet ef database update --project src/GoalStats.Template.Api
 # The same root Dockerfile serves DEV and this disposable image certification.
 docker build -t "$image" .
-export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=service_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
+export ConnectionStrings__Postgres="Host=postgres;Port=5432;Database=goalstats_template_test;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD"
 export ConnectionStrings__Redis="redis:6379,connectTimeout=1000,asyncTimeout=1000,connectRetry=0"
 docker run -d --name "$api_container" --network "${project}_default" \
   -p 127.0.0.1::8080 -e ASPNETCORE_ENVIRONMENT=Staging -e OpenApi__Enabled=true \

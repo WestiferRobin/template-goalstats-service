@@ -38,9 +38,9 @@ need a new PostgreSQL test or migration.
 
 ## Test placement
 
-Production paths are relative to `src/Service.Api/`. Test projects are
-[Service.Api.UnitTests](../tests/Service.Api.UnitTests) and
-[Service.Api.IntegrationTests](../tests/Service.Api.IntegrationTests); match the
+Production paths are relative to `src/GoalStats.Template.Api/`. Test projects are
+[GoalStats.Template.Api.UnitTests](../tests/GoalStats.Template.Api.UnitTests) and
+[GoalStats.Template.Api.IntegrationTests](../tests/GoalStats.Template.Api.IntegrationTests); match the
 existing feature folders rather than creating another test project.
 
 | Subject | Established level | Evidence / placement |
@@ -56,7 +56,7 @@ existing feature folders rather than creating another test project.
 | RedisCache | BOTH | Timeout/cancellation/failure policy in unit `Infrastructure/Cache/`; real TTL, serialization and recovery in integration `Infrastructure/Cache/` |
 | ItemCache / ActionCache | BOTH | Resource keys/TTL/delegation in unit `Infrastructure/Cache/`; real roundtrips/isolation and HTTP cache behavior in integration `Infrastructure/Cache/` and `Controllers/` |
 | Repository | INTEGRATION | Real queries, writes, tracking, constraints and races in `Infrastructure/Database/Repositories/` |
-| ServiceDbContext | INTEGRATION | Save/timestamp behavior and persistence in `Infrastructure/Database/` |
+| TemplateDbContext | INTEGRATION | Save/timestamp behavior and persistence in `Infrastructure/Database/` |
 | EF Configuration | INTEGRATION | Actual schema constraints and persistence, not just reading configuration code |
 | Migration | INTEGRATION | Clean application, current state, rollback/reapplication and model agreement in `Infrastructure/Database/MigrationTests.cs` |
 | Health check | INTEGRATION | Real dependency/schema states and HTTP readiness/liveness in `Health/` |
@@ -111,20 +111,20 @@ out of production registration and choose the smallest helper that proves the be
 
 | Helper / source | What it does | When to use it | When not to use it |
 | --- | --- | --- | --- |
-| [ApiFactory](../tests/Service.Api.IntegrationTests/Fixtures/ApiFactory.cs) | Ordinary WebApplicationFactory host in Testing; clears inherited configuration sources, loads base JSON, disables OpenAPI and supplies a unique cache prefix; explicit host overrides can follow | Hosted HTTP/DI tests with deliberate per-host dependency overrides | Unit tests or checking environment-specific JSON defaults; it does not provision PostgreSQL/Redis |
-| [ConfigurationApiFactory](../tests/Service.Api.IntegrationTests/Fixtures/ConfigurationApiFactory.cs) | Loads base and selected environment JSON without shell/command-line/user-secret configuration, then explicit overrides; default environment is Production | Environment defaults, OpenAPI gates, options binding and invalid startup configuration | Ordinary CRUD setup, or claims that the factory proves ambient shell precedence |
-| [PostgresFixture](../tests/Service.Api.IntegrationTests/Fixtures/PostgresFixture.cs) | Requires a connection targeting `service_test`; creates/migrates a generated `service_test_<guid>` database and a host, then disposes/deletes its owned database | Real PostgreSQL repository, persistence and HTTP cases | LOCAL/DEV connections, starting Docker, or assuming Redis is enabled: its host explicitly sets Redis empty unless a test overrides it |
-| [PostgresOperations](../tests/Service.Api.IntegrationTests/Fixtures/PostgresOperations.cs) | Creates fixture-connected contexts and observes real PostgreSQL lock waits with bounded polling | Transaction, locking and cancellation tests requiring an observed database state | General HTTP setup or replacing real locking evidence with a guessed delay |
-| [RedisProxy](../tests/Service.Api.IntegrationTests/Fixtures/RedisProxy.cs) | Owned TCP proxy to real Redis with response pause/disconnect and forwarding signals | Real transport failures, in-flight operations and recovery | A fake Redis server, unit tests, or faults against resources the test does not own |
-| [RecordingLoggerProvider](../tests/Service.Api.IntegrationTests/Fixtures/RecordingLoggerProvider.cs) | Captures messages/structured entries for selected API/service/framework categories; accepts additional categories | Hosted logging assertions, event ownership and sensitive-data checks | Assuming all categories are recorded by default; add a new resource's category explicitly |
-| [RecordingCache](../tests/Service.Api.UnitTests/Infrastructure/Cache/RecordingCache.cs) | ICache double recording operation, key, type, value, TTL and token; supplies result/failure | Domain-cache wrapper delegation/key/TTL unit tests | Real Redis serialization/expiry/provider behavior |
-| [PendingCall](../tests/Service.Api.UnitTests/Services/PendingCall.cs) | Controlled async operation with started signal and explicit completion/failure; supports cancellation and releases pending work on disposal | Service completion ordering and failure/cancellation unit tests | Real database locks or provider timing certification |
-| [FakeDistributedCache](../tests/Service.Api.UnitTests/Infrastructure/Cache/FakeDistributedCache.cs) | Controlled distributed-cache payload, failure, pending operation, signals and recorded calls/options | RedisCache adapter policy without network access | Proving that Redis itself serializes, expires or recovers correctly |
-| [RecordingServices.cs](../tests/Service.Api.UnitTests/Controllers/RecordingServices.cs) | Contains RecordingItemService and RecordingActionService, recording calls/arguments/tokens and returning configured results/failures | Controller delegation/result unit tests | A class named RecordingServices, or evidence of real service orchestration/persistence |
+| [ApiFactory](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/ApiFactory.cs) | Ordinary WebApplicationFactory host in Testing; clears inherited configuration sources, loads base JSON, disables OpenAPI and supplies a unique cache prefix; explicit host overrides can follow | Hosted HTTP/DI tests with deliberate per-host dependency overrides | Unit tests or checking environment-specific JSON defaults; it does not provision PostgreSQL/Redis |
+| [ConfigurationApiFactory](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/ConfigurationApiFactory.cs) | Loads base and selected environment JSON without shell/command-line/user-secret configuration, then explicit overrides; default environment is Production | Environment defaults, OpenAPI gates, options binding and invalid startup configuration | Ordinary CRUD setup, or claims that the factory proves ambient shell precedence |
+| [PostgresFixture](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/PostgresFixture.cs) | Requires a connection targeting `goalstats_template_test`; creates/migrates a generated `goalstats_template_test_<guid>` database and a host, then disposes/deletes its owned database | Real PostgreSQL repository, persistence and HTTP cases | LOCAL/DEV connections, starting Docker, or assuming Redis is enabled: its host explicitly sets Redis empty unless a test overrides it |
+| [PostgresOperations](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/PostgresOperations.cs) | Creates fixture-connected contexts and observes real PostgreSQL lock waits with bounded polling | Transaction, locking and cancellation tests requiring an observed database state | General HTTP setup or replacing real locking evidence with a guessed delay |
+| [RedisProxy](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/RedisProxy.cs) | Owned TCP proxy to real Redis with response pause/disconnect and forwarding signals | Real transport failures, in-flight operations and recovery | A fake Redis server, unit tests, or faults against resources the test does not own |
+| [RecordingLoggerProvider](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/RecordingLoggerProvider.cs) | Captures messages/structured entries for selected API/service/framework categories; accepts additional categories | Hosted logging assertions, event ownership and sensitive-data checks | Assuming all categories are recorded by default; add a new resource's category explicitly |
+| [RecordingCache](../tests/GoalStats.Template.Api.UnitTests/Infrastructure/Cache/RecordingCache.cs) | ICache double recording operation, key, type, value, TTL and token; supplies result/failure | Domain-cache wrapper delegation/key/TTL unit tests | Real Redis serialization/expiry/provider behavior |
+| [PendingCall](../tests/GoalStats.Template.Api.UnitTests/Services/PendingCall.cs) | Controlled async operation with started signal and explicit completion/failure; supports cancellation and releases pending work on disposal | Service completion ordering and failure/cancellation unit tests | Real database locks or provider timing certification |
+| [FakeDistributedCache](../tests/GoalStats.Template.Api.UnitTests/Infrastructure/Cache/FakeDistributedCache.cs) | Controlled distributed-cache payload, failure, pending operation, signals and recorded calls/options | RedisCache adapter policy without network access | Proving that Redis itself serializes, expires or recovers correctly |
+| [RecordingServices.cs](../tests/GoalStats.Template.Api.UnitTests/Controllers/RecordingServices.cs) | Contains RecordingItemService and RecordingActionService, recording calls/arguments/tokens and returning configured results/failures | Controller delegation/result unit tests | A class named RecordingServices, or evidence of real service orchestration/persistence |
 
 ## Infrastructure safety
 
-- PostgreSQL tests use dedicated TEST infrastructure. PostgresFixture requires the base database name `service_test` and creates generated databases for cases; never reuse LOCAL/DEV databases or delete their volumes. The dedicated user must be able to create/drop its owned test databases.
+- PostgreSQL tests use dedicated TEST infrastructure. PostgresFixture requires the base database name `goalstats_template_test` and creates generated databases for cases; never reuse LOCAL/DEV databases or delete their volumes. The dedicated user must be able to create/drop its owned test databases.
 - Redis tests use unique prefixes/keys and targeted cleanup. Never use `FLUSHALL` or `FLUSHDB`; remove only keys owned by the test, even on failure.
 - Dispose factories, connections, transactions, proxies and pending operations. Fault only owned resources; do not stop a shared Redis/PostgreSQL server to simulate an outage.
 - Use bounded waits and deterministic signals. Observe the relevant operation/lock before triggering cancellation or recovery rather than relying on scheduler speed.
@@ -140,12 +140,12 @@ additionally need host Python 3. Leave SERVICE_WORKFLOW_CERTIFICATION unset norm
 
 | Purpose | Preferred command | Raw mechanism / evidence |
 | --- | --- | --- |
-| Fast unit feedback | `make unit` | `dotnet test tests/Service.Api.UnitTests/Service.Api.UnitTests.csproj` in a network-disabled SDK container; isolated behavior, no providers |
+| Fast unit feedback | `make unit` | `dotnet test tests/GoalStats.Template.Api.UnitTests/GoalStats.Template.Api.UnitTests.csproj` in a network-disabled SDK container; isolated behavior, no providers |
 | Integration only | `make integration` | `./scripts/test.sh integration`; provisions real TEST PostgreSQL/Redis, runs only integration csproj, cleans up |
 | Full automated suite | `make test` | `./scripts/test.sh`; provisions TEST, runs unit + integration solution, cleans up |
 | Actual image smoke | `./scripts/smoke.sh` | `./scripts/smoke.sh`; explicit migrations, root Dockerfile build, Staging image, Healthy liveness/readiness, Swagger UI/JSON, Item/Action CRUD/cache reads/cascade, cleanup |
 | LOCAL/DEV workflow certification | `python3 scripts/certify-workflows.py` | `python3 scripts/certify-workflows.py`; actual topologies, persistence, isolation, failure/interruption and cleanup |
-| Hosted tests without providers | Direct dotnet command | `dotnet test Service.sln --filter "Category!=Postgres&Category!=Redis"` |
+| Hosted tests without providers | Direct dotnet command | `dotnet test GoalStats.Template.sln --filter "Category!=Postgres&Category!=Redis"` |
 
 The first three rows are the normal public Make test interface; smoke/certification are advanced scripts. Normal inner-loop logic work
 uses unit tests; provider/HTTP changes use integration; full regression uses test.
@@ -167,8 +167,8 @@ using unquoted letters/digits/underscore/dot/dash. The scripts do not execute it
 The file is ignored by Git/Docker and is not created by `make setup`.
 
 All test modes share `scripts/test.sh` provisioning and cleanup: database
-`service_test`, unique Compose project, ephemeral loopback ports and container-network connections. Unit does not provision providers. Integration-only selects the integration csproj; the default
-runs Service.sln. Test fixtures create/migrate/drop generated case databases;
+`goalstats_template_test`, unique Compose project, ephemeral loopback ports and container-network connections. Unit does not provision providers. Integration-only selects the integration csproj; the default
+runs GoalStats.Template.sln. Test fixtures create/migrate/drop generated case databases;
 Redis cases use targeted keys. No LOCAL/DEV connections are reused.
 
 Exit 0 means the selected run and cleanup succeeded. Failures stay nonzero; cleanup
@@ -183,7 +183,7 @@ Prefer `make integration` (integration only) or `make test` (full solution) for
 provision/run/cleanup in one command. For direct
 integration execution or IDE debugging, provision **dedicated TEST** PostgreSQL
 and Redis first, then export `ConnectionStrings__Postgres` (base database exactly
-`service_test`, user able to create databases) and `ConnectionStrings__Redis` into
+`goalstats_template_test`, user able to create databases) and `ConnectionStrings__Redis` into
 the test process. PostgresFixture creates/migrates case databases; no LOCAL database
 migration is needed. Ordinary ApiFactory does not import shell configuration, so
 provider tests explicitly consume these connections through their fixtures/helpers.
@@ -197,17 +197,17 @@ retain them while debugging and clean only that session's project afterward.
 ```bash
 (
   set -euo pipefail
-  export POSTGRES_DB=service_test POSTGRES_USER=service POSTGRES_PASSWORD=change_me_test_only
+  export POSTGRES_DB=goalstats_template_test POSTGRES_USER=service POSTGRES_PASSWORD=change_me_test_only
   export POSTGRES_PORT=0 REDIS_PORT=0
-  test_project="service-test-manual-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  test_project="goalstats-template-test-manual-$(uuidgen | tr '[:upper:]' '[:lower:]')"
   test_compose=(docker compose --env-file /dev/null -p "$test_project" -f docker/compose.test.yml)
   trap '"${test_compose[@]}" down -v --remove-orphans' EXIT
   "${test_compose[@]}" up -d --wait --wait-timeout 60
   test_postgres_port=$("${test_compose[@]}" port postgres 5432)
   test_redis_port=$("${test_compose[@]}" port redis 6379)
-  export ConnectionStrings__Postgres="Host=127.0.0.1;Port=${test_postgres_port##*:};Database=service_test;Username=service;Password=${POSTGRES_PASSWORD}"
+  export ConnectionStrings__Postgres="Host=127.0.0.1;Port=${test_postgres_port##*:};Database=goalstats_template_test;Username=service;Password=${POSTGRES_PASSWORD}"
   export ConnectionStrings__Redis="127.0.0.1:${test_redis_port##*:}"
-  dotnet test tests/Service.Api.IntegrationTests
+  dotnet test tests/GoalStats.Template.Api.IntegrationTests
 )
 ```
 

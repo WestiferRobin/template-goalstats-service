@@ -44,10 +44,10 @@ integration/test. Advanced scripts are intentionally separate.
 
 LOCAL is fully containerized: API in Development, PostgreSQL and Redis.
 Default loopback bindings: API 5080, PostgreSQL 55432, Redis 56379. Database
-`service_local`, cache prefix `service-local`, Compose project `service-local`.
+`goalstats_template_local`, cache prefix `goalstats-template-local`, Compose project `goalstats-template-local`.
 
 The Dockerfile `development` target inherits the pinned SDK/tooling stage and
-runs `dotnet watch --non-interactive --project src/Service.Api run --no-launch-profile`.
+runs `dotnet watch --non-interactive --project src/GoalStats.Template.Api run --no-launch-profile`.
 `src/` is mounted read-only; .NET artifacts output goes to a separate named volume
 at `/artifacts`. No nested mounts or pre-existing host bin/obj directories are needed.
 Polling file watching supports Docker Desktop; unsupported hot edits restart the
@@ -65,7 +65,7 @@ DEV builds the checked-out API source into the unchanged published runtime stage
 It runs as the image's non-root APP_UID, listens on container port 8080, has no
 source mount, and uses Staging with `OpenApi__Enabled=true`.
 Default loopback bindings: API 18080, PostgreSQL 25432, Redis 26379. Database
-`service_dev`, cache prefix `service-dev`, Compose project `service-dev`.
+`goalstats_template_dev`, cache prefix `goalstats-template-dev`, Compose project `goalstats-template-dev`.
 
 ```bash
 make build ENV=dev
@@ -91,7 +91,7 @@ Keep database names distinct. Compose project-scoped networks and volumes isolat
 LOCAL/DEV even when logical container hostnames are both postgres/redis.
 `API_PORT` is the published host port; the API always listens on container 8080.
 
-`PROJECT=service-local-name` or `PROJECT=service-dev-name` selects another owned
+`PROJECT=goalstats-template-local-name` or `PROJECT=goalstats-template-dev-name` selects another owned
 standalone project. Reuse that value for every lifecycle command, choose unused
 ports in the selected env file, and never target another user's resources.
 The helper rejects unrelated project names. A project name does not resolve port
@@ -124,7 +124,7 @@ mapping support and any debugger tooling it needs; it is not configured here.
 
 For optional host debugging, install SDK 8.0.303 and restore tools/packages. Start
 only PostgreSQL/Redis with raw Compose (below), supply host-mapped database/cache
-connections to your IDE, and use the Service.Api launch profile on port 5080.
+connections to your IDE, and use the GoalStats.Template.Api launch profile on port 5080.
 Stop the container API before binding that host port. Host debugging is an advanced
 alternative, never the meaning of `make run ENV=local`.
 
@@ -132,7 +132,7 @@ alternative, never the meaning of `make run ENV=local`.
 
 `make unit`, `make integration`, and `make test` build a fresh tooling image from
 checked-out source. Unit uses a network-disabled tooling container with no
-providers. Provider runs get unique `service-test-*` projects, database service_test,
+providers. Provider runs get unique `goalstats-template-test-*` projects, database goalstats_template_test,
 real PostgreSQL/Redis with tmpfs storage, and ephemeral loopback ports. Tests connect
 by container DNS, not the mapped host ports. Tests never reuse LOCAL/DEV volumes.
 Existing fixtures/tests and counts remain authoritative; no test source is changed.
@@ -172,7 +172,7 @@ bash scripts/develop.sh reset local
 For explicit noninteractive disposal of an owned throwaway project:
 
 ```bash
-bash scripts/develop.sh reset local service-local-mycheck delete
+bash scripts/develop.sh reset local goalstats-template-local-mycheck delete
 ```
 
 This removes project volumes, including PostgreSQL data and LOCAL build caches.
@@ -184,15 +184,15 @@ normal stop never deletes volumes.
 Compile without adding another public target:
 
 ```bash
-docker build --target tooling -t service-tooling .
-docker run --rm service-tooling dotnet build Service.sln --no-restore
+docker build --target tooling -t goalstats-template-tooling .
+docker run --rm goalstats-template-tooling dotnet build GoalStats.Template.sln --no-restore
 ```
 
 For a focused unit test, run `dotnet test` with its project and filter in this same
 image. For EF against a running standalone LOCAL database, supply its configured
-credentials explicitly as environment and use `--network service-local_default`;
+credentials explicitly as environment and use `--network goalstats-template-local_default`;
 the connection host is postgres, port 5432. No Docker socket is mounted into tooling.
-The reusable tooling command is `dotnet ef database update --project src/Service.Api`.
+The reusable tooling command is `dotnet ef database update --project src/GoalStats.Template.Api`.
 
 ### Raw host / IDE tooling
 
@@ -201,7 +201,7 @@ Host SDK is optional and must match global.json. Direct EF authoring remains:
 ```bash
 dotnet tool restore
 dotnet restore
-dotnet ef migrations add MeaningfulName --project src/Service.Api
+dotnet ef migrations add MeaningfulName --project src/GoalStats.Template.Api
 ```
 
 Review generated migration/model changes using the contribution guidance below.
@@ -211,7 +211,7 @@ see Testing for the advanced recipe. Never point them at LOCAL/DEV databases.
 Raw dependency-only startup (advanced host debugging):
 
 ```bash
-docker compose --env-file .env.local -p service-local -f docker/compose.local.yml up -d --wait postgres redis
+docker compose --env-file .env.local -p goalstats-template-local -f docker/compose.local.yml up -d --wait postgres redis
 ```
 
 Raw Compose follows normal shell interpolation precedence; unlike the Make helper,
@@ -224,11 +224,11 @@ This repository exports:
 
 - Build context: repository root; Dockerfile targets tooling, development, runtime.
 - Development: SDK/watch with source at /source/src; keep /artifacts container-owned.
-- Runtime: non-root published Service.Api, container port 8080, no source mount.
+- Runtime: non-root published GoalStats.Template.Api, container port 8080, no source mount.
 - HTTP checks: /health and /ready; readiness success is HTTP 200 body Healthy.
 - Configuration: ASPNETCORE_ENVIRONMENT, OpenApi__Enabled, ConnectionStrings__Postgres,
   ConnectionStrings__Redis, Cache__KeyPrefix; credentials supplied at runtime.
-- Migrations: tooling target running `dotnet ef database update --project src/Service.Api`
+- Migrations: tooling target running `dotnet ef database update --project src/GoalStats.Template.Api`
   on the parent's service network with the parent's database connection.
 
 A future parent may reuse these targets and service definitions under its own
@@ -249,27 +249,27 @@ against the wrong database. No parent repository implementation is included here
 
 ## Where changes go
 
-Paths below are relative to `src/Service.Api/` unless they start with `tests/`.
+Paths below are relative to `src/GoalStats.Template.Api/` unless they start with `tests/`.
 Item and Action are domain names; their persistence classes are **ItemModel** and
 **ActionModel**, without aliases that disguise a differently named class.
 
 | Change | Location / existing reference |
 | --- | --- |
-| Add/change endpoint, route, HTTP status | [Controllers/ItemsController.cs](../src/Service.Api/Controllers/ItemsController.cs) |
-| HTTP input and input validation | [Dtos/Item/Requests/](../src/Service.Api/Dtos/Item/Requests) |
-| Service/cache data | [Dtos/Item/ItemDto.cs](../src/Service.Api/Dtos/Item/ItemDto.cs) |
-| HTTP output | [Dtos/Item/Responses/ItemResponse.cs](../src/Service.Api/Dtos/Item/Responses/ItemResponse.cs) |
-| DTO → Response conversion | [Mappers/ItemMapper.cs](../src/Service.Api/Mappers/ItemMapper.cs) |
-| Business rule, validation, orchestration, Model → DTO | [Services/ItemService.cs](../src/Service.Api/Services/ItemService.cs) |
-| PostgreSQL query/write | [Infrastructure/Database/Repositories/Item/](../src/Service.Api/Infrastructure/Database/Repositories/Item) |
-| Persistence entity | [Models/ItemModel.cs](../src/Service.Api/Models/ItemModel.cs) |
-| EF mapping and schema rule | [Infrastructure/Database/Configurations/ItemConfiguration.cs](../src/Service.Api/Infrastructure/Database/Configurations/ItemConfiguration.cs) |
-| Resource cache key and TTL | [Infrastructure/Cache/Item/ItemCache.cs](../src/Service.Api/Infrastructure/Cache/Item/ItemCache.cs) |
-| Generic Redis serialization, provider and fallback policy | [Infrastructure/Cache/RedisCache.cs](../src/Service.Api/Infrastructure/Cache/RedisCache.cs) |
-| Domain error | [Exceptions/Item/ItemNotFoundException.cs](../src/Service.Api/Exceptions/Item/ItemNotFoundException.cs) |
-| DI and framework setup | [Extensions/](../src/Service.Api/Extensions) and [Program.cs](../src/Service.Api/Program.cs); see registrations below |
-| Database schema evolution | [Infrastructure/Database/Migrations/](../src/Service.Api/Infrastructure/Database/Migrations) |
-| Behavior verification | `tests/Service.Api.UnitTests/` or `tests/Service.Api.IntegrationTests/`; use the [placement matrix](TESTING.md#test-placement) |
+| Add/change endpoint, route, HTTP status | [Controllers/ItemsController.cs](../src/GoalStats.Template.Api/Controllers/ItemsController.cs) |
+| HTTP input and input validation | [Dtos/Item/Requests/](../src/GoalStats.Template.Api/Dtos/Item/Requests) |
+| Service/cache data | [Dtos/Item/ItemDto.cs](../src/GoalStats.Template.Api/Dtos/Item/ItemDto.cs) |
+| HTTP output | [Dtos/Item/Responses/ItemResponse.cs](../src/GoalStats.Template.Api/Dtos/Item/Responses/ItemResponse.cs) |
+| DTO → Response conversion | [Mappers/ItemMapper.cs](../src/GoalStats.Template.Api/Mappers/ItemMapper.cs) |
+| Business rule, validation, orchestration, Model → DTO | [Services/ItemService.cs](../src/GoalStats.Template.Api/Services/ItemService.cs) |
+| PostgreSQL query/write | [Infrastructure/Database/Repositories/Item/](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Item) |
+| Persistence entity | [Models/ItemModel.cs](../src/GoalStats.Template.Api/Models/ItemModel.cs) |
+| EF mapping and schema rule | [Infrastructure/Database/Configurations/ItemConfiguration.cs](../src/GoalStats.Template.Api/Infrastructure/Database/Configurations/ItemConfiguration.cs) |
+| Resource cache key and TTL | [Infrastructure/Cache/Item/ItemCache.cs](../src/GoalStats.Template.Api/Infrastructure/Cache/Item/ItemCache.cs) |
+| Generic Redis serialization, provider and fallback policy | [Infrastructure/Cache/RedisCache.cs](../src/GoalStats.Template.Api/Infrastructure/Cache/RedisCache.cs) |
+| Domain error | [Exceptions/Item/ItemNotFoundException.cs](../src/GoalStats.Template.Api/Exceptions/Item/ItemNotFoundException.cs) |
+| DI and framework setup | [Extensions/](../src/GoalStats.Template.Api/Extensions) and [Program.cs](../src/GoalStats.Template.Api/Program.cs); see registrations below |
+| Database schema evolution | [Infrastructure/Database/Migrations/](../src/GoalStats.Template.Api/Infrastructure/Database/Migrations) |
+| Behavior verification | `tests/GoalStats.Template.Api.UnitTests/` or `tests/GoalStats.Template.Api.IntegrationTests/`; use the [placement matrix](TESTING.md#test-placement) |
 
 ## Architecture invariants
 
@@ -303,29 +303,29 @@ Widget below are proposed additions, not existing files. Use Item as the referen
 for an independent resource; use Action for a resource with a parent relationship.
 Decide the intended routes, fields, validation, persistence and cache behavior first.
 
-1. **Model:** add `Models/WidgetModel.cs`, following [ItemModel](../src/Service.Api/Models/ItemModel.cs). Define persisted state, identity and meaningful defaults. Implement `ITimestampedEntity` if adopting the existing timestamp convention.
-2. **Enum, if needed:** add `Enums/WidgetStatus.cs` only for actual domain states; inspect [ItemStatus](../src/Service.Api/Enums/ItemStatus.cs). Review persisted numeric values and public string names separately.
-3. **Requests:** add create/update input under `Dtos/Widget/Requests/`, following [CreateItemRequest](../src/Service.Api/Dtos/Item/Requests/CreateItemRequest.cs) and [UpdateItemRequest](../src/Service.Api/Dtos/Item/Requests/UpdateItemRequest.cs). Put input validation here so HTTP binding and direct service validation agree.
-4. **Service/cache DTO:** add `Dtos/Widget/WidgetDto.cs`, following [ItemDto](../src/Service.Api/Dtos/Item/ItemDto.cs). Decide required JSON members intentionally because this shape is cached.
-5. **Response:** add `Dtos/Widget/Responses/WidgetResponse.cs`, following [ItemResponse](../src/Service.Api/Dtos/Item/Responses/ItemResponse.cs). Expose only the intended public fields.
-6. **Mapper:** add `Mappers/WidgetMapper.cs`, following [ItemMapper](../src/Service.Api/Mappers/ItemMapper.cs), to convert DTOs to public responses once.
-7. **EF configuration:** add `Infrastructure/Database/Configurations/WidgetConfiguration.cs`, following [ItemConfiguration](../src/Service.Api/Infrastructure/Database/Configurations/ItemConfiguration.cs). Define table, keys, lengths, constraints and timestamp mapping; use [ActionConfiguration](../src/Service.Api/Infrastructure/Database/Configurations/ActionConfiguration.cs) when reviewing FK/index/delete behavior.
-8. **DbSet:** add `DbSet<WidgetModel> Widgets` to [ServiceDbContext](../src/Service.Api/Infrastructure/Database/ServiceDbContext.cs) for this persisted resource. EF configurations are discovered by `ApplyConfigurationsFromAssembly`; no manual configuration registration is needed. A non-persisted concept would not need a DbSet or table.
-9. **Repository interface:** add `Infrastructure/Database/Repositories/Widget/IWidgetRepository.cs`, based on [IItemRepository](../src/Service.Api/Infrastructure/Database/Repositories/Item/IItemRepository.cs). Expose the operations the service needs.
-10. **Repository implementation:** add `WidgetRepository.cs` alongside it, following [ItemRepository](../src/Service.Api/Infrastructure/Database/Repositories/Item/ItemRepository.cs). Keep EF queries, tracking, save ownership and provider-specific error handling here; inspect [ActionRepository](../src/Service.Api/Infrastructure/Database/Repositories/Action/ActionRepository.cs) for parent-deletion races rather than catching every database failure as not-found.
-11. **Domain cache interface:** add `Infrastructure/Cache/Widget/IWidgetCache.cs`, following [IItemCache](../src/Service.Api/Infrastructure/Cache/Item/IItemCache.cs), for resource-specific get/set/remove operations.
-12. **Domain cache implementation:** add `WidgetCache.cs`, following [ItemCache](../src/Service.Api/Infrastructure/Cache/Item/ItemCache.cs). Use the shared ICache, configured prefix and TTL; choose an isolated `widgets` key segment. Do not duplicate the Redis provider or failure policy.
-13. **Domain exceptions:** add `Exceptions/Widget/WidgetNotFoundException.cs` derived from [NotFoundException](../src/Service.Api/Exceptions/NotFoundException.cs), following ItemNotFoundException. Existing centralized handling then supplies 404; reuse RequestValidationException for validation. Introduce a new status mapping only for an intentional new error contract.
-14. **Service interface:** add `Services/IWidgetService.cs`, following [IItemService](../src/Service.Api/Services/IItemService.cs), with DTO results and cancellation parameters.
-15. **Service implementation:** add `Services/WidgetService.cs`, following [ItemService](../src/Service.Api/Services/ItemService.cs): validate, orchestrate repository/cache, map Model → DTO and await writes before invalidation. Use [ActionService](../src/Service.Api/Services/ActionService.cs) for parent/existence safeguards if applicable. Preserve bounded best-effort invalidation after committed writes.
+1. **Model:** add `Models/WidgetModel.cs`, following [ItemModel](../src/GoalStats.Template.Api/Models/ItemModel.cs). Define persisted state, identity and meaningful defaults. Implement `ITimestampedEntity` if adopting the existing timestamp convention.
+2. **Enum, if needed:** add `Enums/WidgetStatus.cs` only for actual domain states; inspect [ItemStatus](../src/GoalStats.Template.Api/Enums/ItemStatus.cs). Review persisted numeric values and public string names separately.
+3. **Requests:** add create/update input under `Dtos/Widget/Requests/`, following [CreateItemRequest](../src/GoalStats.Template.Api/Dtos/Item/Requests/CreateItemRequest.cs) and [UpdateItemRequest](../src/GoalStats.Template.Api/Dtos/Item/Requests/UpdateItemRequest.cs). Put input validation here so HTTP binding and direct service validation agree.
+4. **Service/cache DTO:** add `Dtos/Widget/WidgetDto.cs`, following [ItemDto](../src/GoalStats.Template.Api/Dtos/Item/ItemDto.cs). Decide required JSON members intentionally because this shape is cached.
+5. **Response:** add `Dtos/Widget/Responses/WidgetResponse.cs`, following [ItemResponse](../src/GoalStats.Template.Api/Dtos/Item/Responses/ItemResponse.cs). Expose only the intended public fields.
+6. **Mapper:** add `Mappers/WidgetMapper.cs`, following [ItemMapper](../src/GoalStats.Template.Api/Mappers/ItemMapper.cs), to convert DTOs to public responses once.
+7. **EF configuration:** add `Infrastructure/Database/Configurations/WidgetConfiguration.cs`, following [ItemConfiguration](../src/GoalStats.Template.Api/Infrastructure/Database/Configurations/ItemConfiguration.cs). Define table, keys, lengths, constraints and timestamp mapping; use [ActionConfiguration](../src/GoalStats.Template.Api/Infrastructure/Database/Configurations/ActionConfiguration.cs) when reviewing FK/index/delete behavior.
+8. **DbSet:** add `DbSet<WidgetModel> Widgets` to [TemplateDbContext](../src/GoalStats.Template.Api/Infrastructure/Database/TemplateDbContext.cs) for this persisted resource. EF configurations are discovered by `ApplyConfigurationsFromAssembly`; no manual configuration registration is needed. A non-persisted concept would not need a DbSet or table.
+9. **Repository interface:** add `Infrastructure/Database/Repositories/Widget/IWidgetRepository.cs`, based on [IItemRepository](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Item/IItemRepository.cs). Expose the operations the service needs.
+10. **Repository implementation:** add `WidgetRepository.cs` alongside it, following [ItemRepository](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Item/ItemRepository.cs). Keep EF queries, tracking, save ownership and provider-specific error handling here; inspect [ActionRepository](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Action/ActionRepository.cs) for parent-deletion races rather than catching every database failure as not-found.
+11. **Domain cache interface:** add `Infrastructure/Cache/Widget/IWidgetCache.cs`, following [IItemCache](../src/GoalStats.Template.Api/Infrastructure/Cache/Item/IItemCache.cs), for resource-specific get/set/remove operations.
+12. **Domain cache implementation:** add `WidgetCache.cs`, following [ItemCache](../src/GoalStats.Template.Api/Infrastructure/Cache/Item/ItemCache.cs). Use the shared ICache, configured prefix and TTL; choose an isolated `widgets` key segment. Do not duplicate the Redis provider or failure policy.
+13. **Domain exceptions:** add `Exceptions/Widget/WidgetNotFoundException.cs` derived from [NotFoundException](../src/GoalStats.Template.Api/Exceptions/NotFoundException.cs), following ItemNotFoundException. Existing centralized handling then supplies 404; reuse RequestValidationException for validation. Introduce a new status mapping only for an intentional new error contract.
+14. **Service interface:** add `Services/IWidgetService.cs`, following [IItemService](../src/GoalStats.Template.Api/Services/IItemService.cs), with DTO results and cancellation parameters.
+15. **Service implementation:** add `Services/WidgetService.cs`, following [ItemService](../src/GoalStats.Template.Api/Services/ItemService.cs): validate, orchestrate repository/cache, map Model → DTO and await writes before invalidation. Use [ActionService](../src/GoalStats.Template.Api/Services/ActionService.cs) for parent/existence safeguards if applicable. Preserve bounded best-effort invalidation after committed writes.
 16. **Controller:** add `Controllers/WidgetsController.cs`, following ItemsController: routes, service delegation, mapper calls, response/status metadata and Location for creation. Keep business and persistence logic out.
 17. **DI registrations:** add scoped `IWidgetRepository, WidgetRepository` in **DatabaseExtensions**, singleton `IWidgetCache, WidgetCache` in **CacheExtensions**, and explicit scoped `IWidgetService, WidgetService` in **Program.cs**. Add the required namespace imports. Singleton caches must not depend on scoped repositories/DbContext. Keep EF setup in DatabaseExtensions and API/framework setup in ApiExtensions.
-18. **Public enum JSON:** if Widget adds a public enum, register its typed `JsonStringEnumConverter<WidgetStatus>` in [ApiExtensions](../src/Service.Api/Extensions/ApiExtensions.cs), following camelCase with `allowIntegerValues: false`. Verify JSON and OpenAPI; do not assume CLR enum names alone define the HTTP representation.
-19. **Readiness:** review [PostgresHealthCheck](../src/Service.Api/Infrastructure/Database/PostgresHealthCheck.cs). It currently checks pending migrations and probes Items/Actions; a new DbSet is not automatically a new table probe. Decide whether Widget availability requires another probe and corresponding health tests. No new health endpoint is inherently required.
+18. **Public enum JSON:** if Widget adds a public enum, register its typed `JsonStringEnumConverter<WidgetStatus>` in [ApiExtensions](../src/GoalStats.Template.Api/Extensions/ApiExtensions.cs), following camelCase with `allowIntegerValues: false`. Verify JSON and OpenAPI; do not assume CLR enum names alone define the HTTP representation.
+19. **Readiness:** review [PostgresHealthCheck](../src/GoalStats.Template.Api/Infrastructure/Database/PostgresHealthCheck.cs). It currently checks pending migrations and probes Items/Actions; a new DbSet is not automatically a new table probe. Decide whether Widget availability requires another probe and corresponding health tests. No new health endpoint is inherently required.
 20. **Migration:** a persisted Widget adds a table. Follow the [migration decision and review guide](#do-i-need-a-migration); do not create a migration before the intended model/mapping changes exist.
 21. **Unit tests:** add meaningful defaults, request/enum validation, DTO serialization, mapper, service orchestration, controller delegation and domain-cache policy cases in the matching unit folders. Use [placement](TESTING.md#test-placement) and deterministic doubles.
-22. **Integration tests:** verify real repository/schema/migration behavior, HTTP routing/binding/JSON/status/headers, cache behavior and relevant readiness/configuration. Review exact expectations in [SchemaContractTests](../tests/Service.Api.IntegrationTests/Infrastructure/Database/SchemaContractTests.cs) and [EndpointSurfaceTests](../tests/Service.Api.IntegrationTests/Controllers/EndpointSurfaceTests.cs); intentionally extend them instead of weakening assertions.
-23. **OpenAPI:** inspect the LOCAL Swagger document/UI for Widget routes, request/response schemas and enums; extend [OpenApiTests](../tests/Service.Api.IntegrationTests/OpenApi/OpenApiTests.cs) for the intended surface.
+22. **Integration tests:** verify real repository/schema/migration behavior, HTTP routing/binding/JSON/status/headers, cache behavior and relevant readiness/configuration. Review exact expectations in [SchemaContractTests](../tests/GoalStats.Template.Api.IntegrationTests/Infrastructure/Database/SchemaContractTests.cs) and [EndpointSurfaceTests](../tests/GoalStats.Template.Api.IntegrationTests/Controllers/EndpointSurfaceTests.cs); intentionally extend them instead of weakening assertions.
+23. **OpenAPI:** inspect the LOCAL Swagger document/UI for Widget routes, request/response schemas and enums; extend [OpenApiTests](../tests/GoalStats.Template.Api.IntegrationTests/OpenApi/OpenApiTests.cs) for the intended surface.
 24. **Documentation:** update the domain/HTTP contract descriptions and README/operation instructions wherever the public contract or workflow changed. Avoid unrelated documentation rewrites.
 
 ## Do I need a migration?
@@ -352,21 +352,21 @@ After an intentional model/configuration change, the authoring command is:
 
 ```bash
 dotnet tool restore
-dotnet ef migrations add AddWidget --project src/Service.Api --output-dir Infrastructure/Database/Migrations
+dotnet ef migrations add AddWidget --project src/GoalStats.Template.Api --output-dir Infrastructure/Database/Migrations
 ```
 
 `AddWidget` is an example name; choose a descriptive name for the actual change.
 Do not run it just to follow this guide without making an intended schema change.
 
-1. Inspect generated `Up`, `Down`, designer metadata and the `ServiceDbContextModelSnapshot` diff. Never blindly commit generated output. Check column types/nullability/defaults, data loss or conversion needs, FK targets, indexes, constraints and delete behavior.
+1. Inspect generated `Up`, `Down`, designer metadata and the `TemplateDbContextModelSnapshot` diff. Never blindly commit generated output. Check column types/nullability/defaults, data loss or conversion needs, FK targets, indexes, constraints and delete behavior.
 2. Confirm the diff contains only intended schema changes. An unrelated drop/rename or broad snapshot change needs investigation before application. Review rollback data-loss implications even when Down compiles.
 3. Apply to LOCAL with `make migrate ENV=local`. Verify the selected configuration first and preserve any data you need; a destructive LOCAL reset is not required for ordinary migration work.
-4. Update intentional schema expectations in [SchemaContractTests](../tests/Service.Api.IntegrationTests/Infrastructure/Database/SchemaContractTests.cs) and relevant persistence/health tests. Run the [full automated suite](TESTING.md#commands); generated TEST databases provide clean application without deleting LOCAL data.
-5. Review [MigrationTests](../tests/Service.Api.IntegrationTests/Infrastructure/Database/MigrationTests.cs): retain evidence for clean migration application, rollback/reapplication, already-current state and no pending model changes. The current tests assert a single InitialCreate migration and the exact Items/Actions table set; update those expectations intentionally when adding a migration/table. Extend cases when a new migration introduces an upgrade/data transformation that current tests do not exercise.
+4. Update intentional schema expectations in [SchemaContractTests](../tests/GoalStats.Template.Api.IntegrationTests/Infrastructure/Database/SchemaContractTests.cs) and relevant persistence/health tests. Run the [full automated suite](TESTING.md#commands); generated TEST databases provide clean application without deleting LOCAL data.
+5. Review [MigrationTests](../tests/GoalStats.Template.Api.IntegrationTests/Infrastructure/Database/MigrationTests.cs): retain evidence for clean migration application, rollback/reapplication, already-current state and no pending model changes. The current tests assert a single InitialCreate migration and the exact Items/Actions table set; update those expectations intentionally when adding a migration/table. Extend cases when a new migration introduces an upgrade/data transformation that current tests do not exercise.
 6. Check that the model and snapshot agree with the command below, then review the entire diff again. This check does not prove safe data migration or replace real PostgreSQL tests.
 
 ```bash
-dotnet ef migrations has-pending-model-changes --project src/Service.Api
+dotnet ef migrations has-pending-model-changes --project src/GoalStats.Template.Api
 ```
 
 ## Contract change checklist
@@ -408,11 +408,11 @@ Choose tests for the changed behavior using the [source-first rule](TESTING.md#s
 **Search before implementing** so you do not duplicate a regression already covered:
 
 ```bash
-rg -n 'ApiFactory|KeyPrefix|[Ii]solat|[Oo]verride' tests/Service.Api.IntegrationTests/Startup tests/Service.Api.IntegrationTests/Fixtures
+rg -n 'ApiFactory|KeyPrefix|[Ii]solat|[Oo]verride' tests/GoalStats.Template.Api.IntegrationTests/Startup tests/GoalStats.Template.Api.IntegrationTests/Fixtures
 ```
 
-Read [ConfigurationTests](../tests/Service.Api.IntegrationTests/Startup/ConfigurationTests.cs)
-and [ApiFactory](../tests/Service.Api.IntegrationTests/Fixtures/ApiFactory.cs). If the
+Read [ConfigurationTests](../tests/GoalStats.Template.Api.IntegrationTests/Startup/ConfigurationTests.cs)
+and [ApiFactory](../tests/GoalStats.Template.Api.IntegrationTests/Fixtures/ApiFactory.cs). If the
 complete case is absent, add a hosted regression alongside the startup/configuration
 tests: start two ordinary ApiFactory hosts and resolve their CacheOptions; prove
 their generated prefixes are distinct. Use an explicit per-host

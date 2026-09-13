@@ -20,7 +20,7 @@ failure does not replace the database with an error. Item is an example parent
 resource; Action is its child. Neither represents a complete business application.
 
 ```text
-HTTP → Controller → Service → Repository → ServiceDbContext → PostgreSQL
+HTTP → Controller → Service → Repository → TemplateDbContext → PostgreSQL
                          └→ Domain Cache → ICache / RedisCache → Redis
 
 Persistence Model → service DTO → Mapper → public Response → HTTP
@@ -40,7 +40,7 @@ mappers; services construct DTOs from persistence models.
 | Controller | Binds HTTP, calls a service, invokes a mapper, selects the HTTP result | ItemsController |
 | Service | Validates and coordinates persistence/cache work | ItemService |
 | Repository | Owns EF queries and saves; returns models | ItemRepository |
-| ServiceDbContext | Scoped EF database session: tracks entity changes and saves them | Items and Actions DbSets |
+| TemplateDbContext | Scoped EF database session: tracks entity changes and saves them | Items and Actions DbSets |
 | Domain Cache | Owns a resource's cache key and TTL policy | ItemCache |
 | ICache | Interface for generic typed cache operations | GetAsync, SetAsync, RemoveAsync |
 | RedisCache | Implements generic serialization, provider calls, time budgets and fallback | Infrastructure/Cache/RedisCache.cs |
@@ -56,8 +56,8 @@ concerns from becoming the public API contract.
 ## Repository structure and existing contracts
 
 ```text
-Service.sln
-├── src/Service.Api
+GoalStats.Template.sln
+├── src/GoalStats.Template.Api
 │   ├── Program.cs
 │   ├── Extensions
 │   │   ├── ApiExtensions.cs
@@ -83,7 +83,7 @@ Service.sln
 │   │   └── ActionMapper.cs
 │   ├── Infrastructure
 │   │   ├── Database
-│   │   │   ├── ServiceDbContext.cs
+│   │   │   ├── TemplateDbContext.cs
 │   │   │   ├── Configurations
 │   │   │   ├── Migrations
 │   │   │   ├── PostgresHealthCheck.cs
@@ -95,8 +95,8 @@ Service.sln
 │   │       └── Action/IActionCache.cs / ActionCache.cs
 │   ├── Exceptions
 │   └── Enums
-├── tests/Service.Api.UnitTests
-└── tests/Service.Api.IntegrationTests
+├── tests/GoalStats.Template.Api.UnitTests
+└── tests/GoalStats.Template.Api.IntegrationTests
 ```
 
 One production project; both test projects reference it.
@@ -104,13 +104,13 @@ One production project; both test projects reference it.
 ### Persistence and naming invariants
 
 Repository write methods save internally. A save commits **all pending tracked
-changes on the scoped ServiceDbContext**; do not stage unrelated changes across
+changes on the scoped TemplateDbContext**; do not stage unrelated changes across
 repository calls. Mutation methods consume entities from GetForUpdateAsync on the
 same scoped context. Reads are no-tracking; lists order by CreatedAt then Id.
 There is no custom UnitOfWork. Action creation maps only the specific parent FK
 failure to a false result; the service decides the parent-not-found error.
 
-ServiceDbContext, repositories and services are scoped. ICache, ItemCache and
+TemplateDbContext, repositories and services are scoped. ICache, ItemCache and
 ActionCache are singleton: their dependencies are singleton-safe and they hold no
 request state or DbContext. CacheOptions uses IOptions with startup validation.
 
@@ -125,15 +125,15 @@ and Responses retain their existing names.
 
 Services use standard .NET logging directly:
 
-- ItemService → `ILogger<ItemService>` → `Service.Api.Services.ItemService`
-- ActionService → `ILogger<ActionService>` → `Service.Api.Services.ActionService`
+- ItemService → `ILogger<ItemService>` → `GoalStats.Template.Api.Services.ItemService`
+- ActionService → `ILogger<ActionService>` → `GoalStats.Template.Api.Services.ActionService`
 
 `ILogger<T>` gives each class a category while all loggers use the same underlying
 .NET logging infrastructure: the host-managed `ILoggerFactory` and configured
 providers. ASP.NET Core supplies these loggers automatically through DI.
 Services use constant Debug templates with Domain and resource IDs for missing
 resources, cache fallback, parent FK races, and stale Action rejection. Enable
-Debug for either service category, or `Service.Api.Services`, when diagnosing
+Debug for either service category, or `GoalStats.Template.Api.Services`, when diagnosing
 behavior. No request payloads or routine CRUD success
 messages are logged. RedisCache owns cache failure warnings; ApiExceptionHandler
 owns sanitized unexpected-error logging. Services do not catch/log/rethrow failures.
@@ -148,7 +148,7 @@ remains shared, including the empty Action parent-ID check.
 
 ## Boundaries and folder responsibilities
 
-Paths below are relative to `src/Service.Api/`.
+Paths below are relative to `src/GoalStats.Template.Api/`.
 
 | Folder | What belongs here | Boundary |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ Paths below are relative to `src/Service.Api/`.
 | Models/ | ItemModel, ActionModel and timestamped-entity contract | Models are not returned directly over HTTP |
 | Services/ | Validation, orchestration, Model → DTO conversion | No DbContext, raw Redis calls or HTTP response construction |
 
-`tests/Service.Api.UnitTests/` exercises isolated behavior; integration tests use
+`tests/GoalStats.Template.Api.UnitTests/` exercises isolated behavior; integration tests use
 hosted HTTP and real infrastructure where required. See the
 [operational test overview](DEVELOPMENT.md#test-overview) for running them.
 
@@ -172,7 +172,7 @@ hosted HTTP and real infrastructure where required. See the
 Constructor injection means a class asks for its dependencies as constructor
 parameters rather than constructing them itself. ASP.NET Core supplies registered
 implementations. For example, ItemsController asks for IItemService and IActionService;
-[Program.cs](../src/Service.Api/Program.cs) registers:
+[Program.cs](../src/GoalStats.Template.Api/Program.cs) registers:
 
 ```csharp
 builder.Services.AddScoped<IItemService, ItemService>();
@@ -180,16 +180,16 @@ builder.Services.AddScoped<IActionService, ActionService>();
 ```
 
 A **scoped** instance is shared within one scope, normally one HTTP request.
-ServiceDbContext, domain repositories and domain services are scoped. A **singleton**
+TemplateDbContext, domain repositories and domain services are scoped. A **singleton**
 is shared across the application host. ICache/RedisCache and the domain caches are
 singletons; they do not hold request-specific state or a scoped DbContext.
 
 | Registration group | Implementation | Responsibility |
 | --- | --- | --- |
-| AddApi() | [ApiExtensions](../src/Service.Api/Extensions/ApiExtensions.cs) | Controllers, JSON enums, Problem Details, exception handler, Swagger generation |
-| AddDatabase(configuration) | [DatabaseExtensions](../src/Service.Api/Extensions/DatabaseExtensions.cs) | Npgsql/DbContext, scoped repositories, PostgreSQL readiness |
-| AddCache(configuration) | [CacheExtensions](../src/Service.Api/Extensions/CacheExtensions.cs) | Validated cache options, Redis provider, singleton caches, Redis readiness |
-| Domain service registrations | [Program](../src/Service.Api/Program.cs) | Explicit service interface → implementation composition |
+| AddApi() | [ApiExtensions](../src/GoalStats.Template.Api/Extensions/ApiExtensions.cs) | Controllers, JSON enums, Problem Details, exception handler, Swagger generation |
+| AddDatabase(configuration) | [DatabaseExtensions](../src/GoalStats.Template.Api/Extensions/DatabaseExtensions.cs) | Npgsql/DbContext, scoped repositories, PostgreSQL readiness |
+| AddCache(configuration) | [CacheExtensions](../src/GoalStats.Template.Api/Extensions/CacheExtensions.cs) | Validated cache options, Redis provider, singleton caches, Redis readiness |
+| Domain service registrations | [Program](../src/GoalStats.Template.Api/Program.cs) | Explicit service interface → implementation composition |
 
 After building the app, Program emits the missing-Redis warning when applicable.
 It installs exception handling, then status-code pages, then conditionally installs
@@ -206,20 +206,20 @@ Send this body through Swagger's `POST /items` operation:
 
 | Step / actual file and method | Contribution |
 | --- | --- |
-| [CreateItemRequest](../src/Service.Api/Dtos/Item/Requests/CreateItemRequest.cs) | Defines required Name with the 200-character limit; MVC checks HTTP input |
-| [ItemsController.Create](../src/Service.Api/Controllers/ItemsController.cs) | Passes the request and cancellation token to IItemService |
-| [ItemService.CreateAsync](../src/Service.Api/Services/ItemService.cs) | Validates again for non-HTTP callers, constructs ItemModel and awaits persistence |
-| [ItemRepository.CreateAsync](../src/Service.Api/Infrastructure/Database/Repositories/Item/ItemRepository.cs) | Adds the entity to the DbContext and awaits SaveChangesAsync |
-| [ServiceDbContext.SaveChangesAsync](../src/Service.Api/Infrastructure/Database/ServiceDbContext.cs) | Stamps UTC timestamps; EF/Npgsql writes the row to PostgreSQL |
+| [CreateItemRequest](../src/GoalStats.Template.Api/Dtos/Item/Requests/CreateItemRequest.cs) | Defines required Name with the 200-character limit; MVC checks HTTP input |
+| [ItemsController.Create](../src/GoalStats.Template.Api/Controllers/ItemsController.cs) | Passes the request and cancellation token to IItemService |
+| [ItemService.CreateAsync](../src/GoalStats.Template.Api/Services/ItemService.cs) | Validates again for non-HTTP callers, constructs ItemModel and awaits persistence |
+| [ItemRepository.CreateAsync](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Item/ItemRepository.cs) | Adds the entity to the DbContext and awaits SaveChangesAsync |
+| [TemplateDbContext.SaveChangesAsync](../src/GoalStats.Template.Api/Infrastructure/Database/TemplateDbContext.cs) | Stamps UTC timestamps; EF/Npgsql writes the row to PostgreSQL |
 | ItemService's ToDto | Builds ItemDto from the saved model; creation does not populate cache |
-| [ItemMapper.ToResponse](../src/Service.Api/Mappers/ItemMapper.cs) | Converts the DTO into ItemResponse |
+| [ItemMapper.ToResponse](../src/GoalStats.Template.Api/Mappers/ItemMapper.cs) | Converts the DTO into ItemResponse |
 | ItemsController.Create | Returns 201 Created and a Location pointing to `/items/{itemId}` |
 
 The model supplies the UUID. The response includes `id`, `name`, `status`,
 `createdAt`, and `updatedAt`; a new Item has status `active`.
 
 **Breakpoints:** start at ItemsController.Create, then ItemService.CreateAsync,
-ItemRepository.CreateAsync, ServiceDbContext.SaveChangesAsync and
+ItemRepository.CreateAsync, TemplateDbContext.SaveChangesAsync and
 ItemMapper.ToResponse. Continue execution before judging readiness timeouts; a
 paused debugger can delay other requests.
 
@@ -227,10 +227,10 @@ paused debugger can delay other requests.
 
 Use the `id` returned by POST in Swagger's GET operation.
 
-1. [ItemsController.Get](../src/Service.Api/Controllers/ItemsController.cs) calls ItemService.GetAsync.
-2. [ItemService.GetAsync](../src/Service.Api/Services/ItemService.cs) asks ItemCache for that ID.
-3. [ItemCache.GetAsync](../src/Service.Api/Infrastructure/Cache/Item/ItemCache.cs) constructs `{prefix}:items:{id:D}` and calls ICache.GetAsync&lt;ItemDto&gt;.
-4. [RedisCache.GetAsync](../src/Service.Api/Infrastructure/Cache/RedisCache.cs) reads through the distributed-cache provider and deserializes the payload.
+1. [ItemsController.Get](../src/GoalStats.Template.Api/Controllers/ItemsController.cs) calls ItemService.GetAsync.
+2. [ItemService.GetAsync](../src/GoalStats.Template.Api/Services/ItemService.cs) asks ItemCache for that ID.
+3. [ItemCache.GetAsync](../src/GoalStats.Template.Api/Infrastructure/Cache/Item/ItemCache.cs) constructs `{prefix}:items:{id:D}` and calls ICache.GetAsync&lt;ItemDto&gt;.
+4. [RedisCache.GetAsync](../src/GoalStats.Template.Api/Infrastructure/Cache/RedisCache.cs) reads through the distributed-cache provider and deserializes the payload.
 5. **Hit:** the service returns the cached ItemDto without loading the Item from PostgreSQL.
 6. **Miss:** the service awaits ItemRepository.GetByIdAsync, which performs a no-tracking query. A missing row becomes ItemNotFoundException. Otherwise the service maps the model to ItemDto and awaits ItemCache.SetAsync before returning it.
 7. The controller invokes ItemMapper.ToResponse and returns 200 with ItemResponse.
@@ -283,11 +283,11 @@ ActionType is an editable classification; it does not execute an operation or
 represent audit history.
 
 `Item` and `Action` are domain names. Classes specify their role: persistence
-entities are `Service.Api.Models.ItemModel` and `Service.Api.Models.ActionModel`,
+entities are `GoalStats.Template.Api.Models.ItemModel` and `GoalStats.Template.Api.Models.ActionModel`,
 in `Models/ItemModel.cs` and `Models/ActionModel.cs`. Use these types directly,
 without model aliases. Domain folders and namespaces remain `Item` and `Action`;
 SQL tables remain `Items` and `Actions`. Both models implement
-`ITimestampedEntity`, processed in one pass by `ServiceDbContext` for synchronous and
+`ITimestampedEntity`, processed in one pass by `TemplateDbContext` for synchronous and
 asynchronous saves. Both entities receive UTC timestamps on EF insertion. Updates preserve CreatedAt
 and refresh UpdatedAt, including unchanged PUT values. Bulk/direct SQL bypasses
 this timestamp handling. Action ownership is immutable through the API and normal
@@ -345,7 +345,7 @@ cancellation. Cache failures produce safe warnings and permit PostgreSQL fallbac
 | ItemCache | ItemDto | `{prefix}:items:{itemId:D}` | DefaultTtlSeconds |
 | ActionCache | ActionDto | `{prefix}:actions:{actionId:D}` | DefaultTtlSeconds |
 
-The default prefix is `service` and TTL is 300 seconds. JSON uses the configured
+The default prefix is `goalstats-template` and TTL is 300 seconds. JSON uses the configured
 MVC serializer options. Required payload members make incomplete Item/Action JSON
 a cache miss. Generic Redis operations have a two-second wait budget.
 
@@ -362,8 +362,11 @@ The Action safeguard protects absent rows, not freshness of existing-row updates
 
 ## Copying the template
 
-`Service.Api` is a placeholder, not a framework requirement. For example, a copied
-service can use `User.Api` and `UserDbContext`, or retain `ServiceDbContext`.
+`GoalStats.Template.*` and `TemplateDbContext` are the explicit template identity.
+The intended downstream convention is `GoalStats.<DOMAIN>.*` and `<DOMAIN>DbContext`,
+for example `GoalStats.User.*` / `UserDbContext` or `GoalStats.Match.*` /
+`MatchDbContext`. DOMAIN-aware scaffolding is not yet implemented in team-squared-dev;
+this convention becomes automated only after the parent enhancement is released.
 
 1. Copy source/configuration into the new repository without `.git`, `.env`, build
    outputs or test artifacts.

@@ -30,9 +30,9 @@ if [[ "$action" == setup ]]; then
   exit 0
 fi
 case "$action" in build|run|migrate|stop|logs|reset) ;; *) fail "Unknown action: $action" ;; esac
-project=${project:-service-$mode}
+project=${project:-goalstats-template-$mode}
 # Keep reset/stop away from TEST and unrelated projects, including accidental overrides.
-case "$project" in "service-$mode"|"service-$mode-"*) ;; *) fail "PROJECT must be service-$mode or begin service-$mode-." ;; esac
+case "$project" in "goalstats-template-$mode"|"goalstats-template-$mode-"*) ;; *) fail "PROJECT must be goalstats-template-$mode or begin goalstats-template-$mode-." ;; esac
 [[ "$project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail 'Invalid Compose project name.'
 file=".env.$mode"
 [[ -f "$file" ]] || fail "Missing $file. Run make setup first."
@@ -41,7 +41,7 @@ file=".env.$mode"
 # File values/defaults are authoritative here, not inherited LOCAL/DEV exports.
 POSTGRES_USER=service
 POSTGRES_PASSWORD=
-POSTGRES_DB="service_$mode"
+POSTGRES_DB="goalstats_template_$mode"
 if [[ "$mode" == local ]]; then POSTGRES_PORT=55432; REDIS_PORT=56379; API_PORT=5080
 else POSTGRES_PORT=25432; REDIS_PORT=26379; API_PORT=18080; fi
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -71,17 +71,17 @@ wait_ready() {
   build_tools
   docker run --rm --name "$tool_container" --network "${project}_default" "$tool_image" bash -c '
     for ((i=0; i<120; i++)); do
-      body=$(curl -fsS --max-time 2 http://service-api:8080/ready 2>/dev/null) && [[ "$body" == Healthy ]] && exit 0
+      body=$(curl -fsS --max-time 2 http://goalstats-template-api:8080/ready 2>/dev/null) && [[ "$body" == Healthy ]] && exit 0
       sleep 1
     done
     exit 1
   ' || { echo "Readiness failed. Run: make migrate ENV=$mode PROJECT=$project; inspect: make logs ENV=$mode PROJECT=$project" >&2; return 1; }
 }
 case "$action" in
-  build) "${compose[@]}" build service-api ;;
+  build) "${compose[@]}" build goalstats-template-api ;;
   run)
     echo "Migrations are explicit: make migrate ENV=$mode PROJECT=$project"
-    "${compose[@]}" up -d --build service-api
+    "${compose[@]}" up -d --build goalstats-template-api
     wait_ready
     echo "API ready: http://127.0.0.1:$API_PORT"
     echo "Swagger: http://127.0.0.1:$API_PORT/swagger" ;;
@@ -91,7 +91,7 @@ case "$action" in
     docker run --rm --name "$tool_container" --network "${project}_default" \
       -e "ASPNETCORE_ENVIRONMENT=$([[ "$mode" == local ]] && echo Development || echo Staging)" \
       -e "ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=$POSTGRES_DB;Username=$POSTGRES_USER;Password=$POSTGRES_PASSWORD" \
-      "$tool_image" dotnet ef database update --project src/Service.Api ;;
+      "$tool_image" dotnet ef database update --project src/GoalStats.Template.Api ;;
   stop) "${compose[@]}" down ;;
   reset)
     echo "WARNING: DESTRUCTIVE RESET of $mode project $project. Its PostgreSQL volume and ALL database rows will be deleted."
@@ -105,5 +105,5 @@ case "$action" in
     echo "Reset complete. Reapply migrations with make migrate ENV=$mode (retain PROJECT if overridden)." ;;
   logs)
     if [[ ${LOGS_ALL:-0} == 1 ]]; then exec "${compose[@]}" logs -f
-    else exec "${compose[@]}" logs -f service-api; fi ;;
+    else exec "${compose[@]}" logs -f goalstats-template-api; fi ;;
 esac
