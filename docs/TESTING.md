@@ -81,7 +81,7 @@ existing feature folders rather than creating another test project.
 | TemplateDbContext | INTEGRATION | Save/timestamp behavior and persistence in `Infrastructure/Database/` |
 | EF Configuration | INTEGRATION | Actual schema constraints and persistence, not just reading configuration code |
 | Migration | INTEGRATION | Clean application, current state, rollback/reapplication and model agreement in `Infrastructure/Database/MigrationTests.cs` |
-| Health check | INTEGRATION | Real dependency/schema states and HTTP readiness/liveness in `Health/` |
+| Health check | INTEGRATION | Real provider/schema states in `Health/`; operational HTTP transport in `Controllers/MetaControllerTests.cs` |
 | Extensions | INTEGRATION | Registration, options and provider/host behavior in `Startup/` and relevant infrastructure tests |
 | Program / configuration | INTEGRATION | Actual hosting, middleware, endpoints and configuration through `Startup/`, `Controllers/`, `Exceptions/`, `OpenApi/` and `Health/` |
 | Properties/launchSettings.json | NO DIRECT TEST | Relevant launch/runtime behavior is checked indirectly by startup/workflows |
@@ -158,6 +158,20 @@ then release it and verify the result. Exercise failure/cancellation where the
 source supports them. Bound waits so regressions fail instead of hanging; avoid
 arbitrary sleeps or assertions based only on invocation order.
 
+## Operational controller coverage
+
+MetaController owns `/health` and `/ready` and delegates to the real ASP.NET health
+middleware/service. Its integration tests characterize exact status/body bytes,
+`text/plain`, anti-cache headers, Accept behavior, unrestricted methods (GET is the
+documented interface), tag selection and request abort. Deterministic registered
+IHealthCheck doubles isolate transport while preserving framework aggregation.
+The HEAD body assertion characterizes TestServer. Built-server certification also
+verified that Kestrel suppresses the HEAD wire body, matching the old endpoint mapping. Existing OpenAPI tests preserve exclusion of both routes.
+
+Provider Health tests retain real PostgreSQL/Redis faults, budgets and recovery.
+No unit controller suite or duplicated provider fault matrix is needed. Readiness
+can be HTTP 200 `Degraded`; operational waits still require HTTP 200 plus `Healthy`.
+
 ## Integration rules
 
 Integration tests may use WebApplicationFactory, real PostgreSQL/Redis, EF migrations,
@@ -192,8 +206,9 @@ The shared [FixtureCleanup](../tests/Support/FixtureCleanup.cs) helper preserves
 host-disposal and database-cleanup failures without skipping cleanup. Its pure
 orchestration is tested under unit `TestSupport`; owned database creation/disposal
 failures remain under integration `FixtureTests/PostgresFixtureTests`. Redis proxy
-observation belongs in `FixtureTests/RedisProxyTests`; production readiness stays
-in `Health`. Startup/DI evidence is under `Startup`, including `HostCompositionTests`.
+observation belongs in `FixtureTests/RedisProxyTests`; production provider readiness stays
+in `Health`; operational HTTP transport belongs to `Controllers/MetaControllerTests`.
+Startup/DI evidence is under `Startup`, including `HostCompositionTests`.
 
 ControllerBoundaryTests uses a pending/failing service through real ASP.NET creation
 routes (Item, Action, nested Action). It observes actual RequestAborted propagation
@@ -238,7 +253,45 @@ for a focused regression. Filters do not supply missing infrastructure. The scri
 are the normal full-suite/image entry points; `test.sh` accepts only optional `all` (default), `unit`, or `integration`,
 not arbitrary `dotnet test` arguments.
 
-### Certified baseline and historical counts
+### Certified MetaController baseline
+
+Before production edits, 28 focused characterization/surface/OpenAPI cases passed
+against the startup mappings. After replacement, the same transport assertions plus
+startup configuration checks passed (36 cases); the focused provider run passed all
+12 cases. Solution build passed with 0 warnings and 0 errors.
+
+`make unit`, `make integration` and `make test` passed with 260 unit / 293 integration /
+553 total, 0 failures and 0 skips. Compared with the previous certified 260 / 276 /
+536 baseline, the change adds 17 integration cases: 4 selection/aggregation, 8 method,
+4 Accept and 1 request-abort case. The 2 original PostgreSQL endpoint cases moved
+without removal, and endpoint ownership assertions expanded an existing test.
+Counts describe observed discovery, not a permanent target.
+
+Full certification passed in a fresh disposable macOS clone of the canonical
+remote with the intended changes applied. The candidate independently passed setup,
+unit/integration/full suites at the same counts, solution build (0 warnings / 0
+errors), API publish and EF checks for TemplateDbContext and
+`20260908043250_InitialCreate`, with no pending model changes.
+
+Real Kestrel HTTP comparisons against the unchanged pre-MetaController baseline
+passed all 72 combinations: both routes, GET/HEAD/POST/OPTIONS, three Accept values,
+and Healthy/Redis-Degraded/PostgreSQL-Unhealthy states. Status, exact body bytes,
+content type, anti-cache headers and content-length behavior matched. HEAD had an
+empty wire body in both versions. Real Redis outage retained 200 `Degraded`; real
+PostgreSQL outage retained 503 `Unhealthy`; liveness remained 200 `Healthy`.
+
+LOCAL Development and DEV Staging passed public Make build/migrate/run/stop/restart,
+Swagger, Item/Action CRUD/cache/cascade and persistence checks. DEV had no source
+mounts. Unmodified smoke and workflow scripts passed normal execution, two controlled
+failures per script and SIGTERM cleanup; LOCAL/DEV sentinel rows survived. Final
+container/network/volume/image-tag inventories matched the starting inventory.
+Provider code, registration/tags, migrations, Item/Action and runtime scripts are
+unchanged. The narrow certification test update explicitly includes an untagged
+failing check alongside a differently tagged check, proving both are excluded.
+
+The earlier certification below predates MetaController.
+
+### Previous certified baseline and historical counts
 
 These are certified results for the test architecture alignment, not permanent
 count requirements. All discovered cases must pass with no unexplained skips.

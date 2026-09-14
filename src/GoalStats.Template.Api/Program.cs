@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using GoalStats.Template.Api.Extensions;
 using GoalStats.Template.Api.Services;
 
@@ -30,16 +29,6 @@ if (app.Configuration.GetValue<bool>("OpenApi:Enabled"))
 }
 
 app.MapControllers();
-
-app.MapHealthChecks("/health", new HealthCheckOptions
-{
-    Predicate = _ => false
-});
-
-app.MapHealthChecks("/ready", new HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
 
 app.Run();
 

@@ -107,6 +107,13 @@ No host connection-string exports or host SDK are needed.
 
 ## Swagger and health
 
+MetaController owns the operational `/health` and `/ready` HTTP routes; provider
+checks and registration remain in Infrastructure and Extensions. GET is the public
+documented interface. Route-only actions preserve unrestricted method compatibility,
+and neither route appears in Swagger. Readiness may return HTTP 200 `Degraded`
+when Redis is unavailable; operational waits require HTTP 200 plus `Healthy`.
+These controller contracts are integration-tested.
+
 LOCAL and DEV enable Swagger. `/health` is liveness; `/ready` retains application
 schema/database/cache readiness semantics. Run polls `/ready` from a temporary
 SDK container on the selected network for up to 120 attempts with bounded HTTP

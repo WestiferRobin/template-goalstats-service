@@ -64,6 +64,9 @@ GoalStats.Template.sln
 │   │   ├── DatabaseExtensions.cs
 │   │   └── CacheExtensions.cs
 │   ├── Controllers
+│   │   ├── ItemsController.cs
+│   │   ├── ActionsController.cs
+│   │   └── MetaController.cs
 │   ├── Models
 │   │   ├── ItemModel.cs
 │   │   ├── ActionModel.cs
@@ -152,7 +155,7 @@ Paths below are relative to `src/GoalStats.Template.Api/`.
 
 | Folder | What belongs here | Boundary |
 | --- | --- | --- |
-| Controllers/ | Routes, binding, service calls, response mapper calls, HTTP status metadata | No direct DbContext or Redis access |
+| Controllers/ | Routes, binding, service calls, response mapper calls, HTTP status metadata; MetaController operational transport | No direct DbContext or Redis access |
 | Dtos/ | Service/cache DTOs, Requests/, Responses/ in singular domain folders | No EF navigation graphs in service DTOs |
 | Enums/ | Domain classifications and their defined values | JSON and database representations are intentional contracts |
 | Exceptions/ | Domain errors and the central API exception handler | Public error details must remain safe |
@@ -207,8 +210,18 @@ singletons; they do not hold request-specific state or a scoped DbContext.
 
 After building the app, Program emits the missing-Redis warning when applicable.
 It installs exception handling, then status-code pages, then conditionally installs
-Swagger middleware. It maps controllers, `/health`, and `/ready`, then runs the app.
+Swagger middleware. It maps controllers, then runs the app. MetaController owns
+`/health` and `/ready`; Program contains no separate operational endpoint mappings.
 Startup does not apply migrations or seed data.
+
+MetaController delegates directly to HealthCheckMiddleware using the registered
+HealthCheckService. `/health` selects no checks; `/ready` selects the `ready` tag.
+The controller performs no provider probing or readiness aggregation. Database and
+cache extensions retain registration; PostgresHealthCheck and RedisHealthCheck
+retain provider logic. GET is documented, but route-only attributes preserve all
+methods. ApiExplorer excludes both endpoints from Swagger. Responses remain plain
+text: 200 `Healthy`, 200 `Degraded`, or 503 `Unhealthy`; startup waits require 200
+plus `Healthy`. Controller transport is integration-tested.
 
 ## POST /items walkthrough
 

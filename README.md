@@ -115,6 +115,17 @@ Use `LOGS_ALL=1 make logs` for dependency logs too. Unsupported environments are
 rejected. Advanced image smoke, workflow certification, guarded reset, raw tools,
 and future parent-repository reuse are documented in [Development](docs/DEVELOPMENT.md).
 
+## Operational HTTP endpoints
+
+`MetaController` owns `/health` and `/ready` through the ASP.NET health middleware.
+PostgreSQL and Redis checks remain Infrastructure concerns, registered by the
+existing extensions. GET is the documented interface; methods remain unrestricted
+for backward compatibility. Both routes stay excluded from Swagger.
+
+Liveness selects no providers and returns 200 `Healthy`. Readiness selects `ready`
+checks: 200 `Healthy`, 200 `Degraded`, or 503 `Unhealthy`, as plain text. Operational
+waits require both HTTP 200 and body `Healthy`; 200 `Degraded` does not satisfy them.
+
 ## Testing philosophy
 
 UNIT TESTS FOLLOW LOGIC
