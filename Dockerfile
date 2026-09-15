@@ -1,33 +1,22 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0.303 AS tooling
-WORKDIR /source
-ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
-COPY global.json GoalStats.Template.sln ./
-COPY .config/ .config/
-COPY src/GoalStats.Template.Api/GoalStats.Template.Api.csproj src/GoalStats.Template.Api/
-COPY tests/GoalStats.Template.Api.UnitTests/GoalStats.Template.Api.UnitTests.csproj tests/GoalStats.Template.Api.UnitTests/
-COPY tests/GoalStats.Template.Api.IntegrationTests/GoalStats.Template.Api.IntegrationTests.csproj tests/GoalStats.Template.Api.IntegrationTests/
-RUN dotnet tool restore && dotnet restore GoalStats.Template.sln
-COPY src/ src/
-COPY tests/ tests/
-
-FROM tooling AS development
-ENV ASPNETCORE_HTTP_PORTS=8080 DOTNET_USE_POLLING_FILE_WATCHER=1 DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1
-ENV UseArtifactsOutput=true ArtifactsPath=/artifacts
-EXPOSE 8080
-CMD ["dotnet", "watch", "--non-interactive", "--project", "src/GoalStats.Template.Api", "run", "--no-launch-profile"]
-
-FROM mcr.microsoft.com/dotnet/sdk:8.0.303 AS build
-WORKDIR /source
-COPY global.json ./
-COPY src/GoalStats.Template.Api/GoalStats.Template.Api.csproj src/GoalStats.Template.Api/
-RUN dotnet restore src/GoalStats.Template.Api/GoalStats.Template.Api.csproj
-COPY src/GoalStats.Template.Api/ src/GoalStats.Template.Api/
-RUN dotnet publish src/GoalStats.Template.Api/GoalStats.Template.Api.csproj -c Release --no-restore -o /app/publish /p:UseAppHost=false
-
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
 WORKDIR /app
-ENV ASPNETCORE_HTTP_PORTS=8080
-EXPOSE 8080
-USER $APP_UID
-COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "GoalStats.Template.Api.dll"]
+COPY requirements.txt ./
+RUN python -m pip install --no-cache-dir --no-deps -r requirements.txt \
+    && python -m pip check \
+    && groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --no-create-home app
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY alembic.ini ./
+USER 10001:10001
+EXPOSE 8000
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12 \
+  CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2); assert r.status == 200 and r.read() == b'Healthy'"
+CMD ["gunicorn", "--bind=0.0.0.0:8000", "--workers=2", "--timeout=30", "--graceful-timeout=10", "--access-logfile=-", "--error-logfile=-", "goalstats_template:create_app()"]
+
+FROM runtime AS tooling
+COPY tests/ ./tests/
+COPY scripts/ ./scripts/
+COPY pytest.ini ruff.toml mypy.ini ./
+CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]

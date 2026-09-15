@@ -1,415 +1,108 @@
-# Architecture
-
-[Repository entry point](../README.md) · [Operation and contribution](DEVELOPMENT.md) · [Testing](TESTING.md)
-
-For contributors learning the request flow or reviewing design tradeoffs, this guide
-explains the current architecture and its boundaries.
-
-Read [the glossary](#glossary) and [request walkthroughs](#post-items-walkthrough)
-first if these layers are new to you. Experienced readers can jump to
-[boundaries](#boundaries-and-folder-responsibilities) and [design decisions](#current-design-decisions).
-To implement a change, see [add a domain](DEVELOPMENT.md#add-a-domain-widget),
-[migrations](DEVELOPMENT.md#do-i-need-a-migration), [test placement](TESTING.md#test-placement)
-or [troubleshooting](DEVELOPMENT.md#troubleshooting).
-
-## Mental model
-
-This service receives an HTTP request, coordinates work, and returns an HTTP response.
-PostgreSQL is the source of truth. Redis can answer some reads faster, but a cache
-failure does not replace the database with an error. Item is an example parent
-resource; Action is its child. Neither represents a complete business application.
+# Reference architecture
 
 ```text
-HTTP → Controller → Service → Repository → TemplateDbContext → PostgreSQL
-                         └→ Domain Cache → ICache / RedisCache → Redis
+Route → Service → Repository → SQLAlchemy Session → PostgreSQL
+              └→ Resource Cache → Redis JSON adapter → Redis
 
-Persistence Model → service DTO → Mapper → public Response → HTTP
+ORM entity → immutable scalar result → Marshmallow response schema → HTTP
 ```
 
-A cache hit starts the return path at the DTO. Controllers invoke the response
-mappers; services construct DTOs from persistence models.
+The application factory explicitly constructs app-owned Engine/session and Redis
+pools. Routes obtain services through the Flask composition boundary. Services,
+repositories, and cache adapters do not depend on Flask globals. One requirements
+file and Python 3.12 remain the dependency/runtime contract.
 
-## Glossary
+## Resource contracts
 
-| Term | Meaning in this repository | Example |
+| Methods | Path | Behavior |
 | --- | --- | --- |
-| Request | HTTP input and its validation rules | CreateItemRequest |
-| Model | Entity persisted by EF Core; may have navigation relationships | ItemModel |
-| DTO | Data transfer object used by services and typed cache payloads | ItemDto |
-| Response | Public HTTP output shape | ItemResponse |
-| Controller | Binds HTTP, calls a service, invokes a mapper, selects the HTTP result | ItemsController |
-| Service | Validates and coordinates persistence/cache work | ItemService |
-| Repository | Owns EF queries and saves; returns models | ItemRepository |
-| TemplateDbContext | Scoped EF database session: tracks entity changes and saves them | Items and Actions DbSets |
-| Domain Cache | Owns a resource's cache key and TTL policy | ItemCache |
-| ICache | Interface for generic typed cache operations | GetAsync, SetAsync, RemoveAsync |
-| RedisCache | Implements generic serialization, provider calls, time budgets and fallback | Infrastructure/Cache/RedisCache.cs |
-| Mapper | Converts service DTOs to HTTP responses | ItemMapper.ToResponse |
-| Health | Whether the API process can answer a liveness request | /health |
-| Readiness | Whether required database/schema and optional cache are available | /ready |
+| GET, POST | `/items` | List / create Item |
+| GET, PUT, DELETE | `/items/<item_id>` | Read / update / delete Item |
+| GET, POST | `/actions` | List / create Action with body `itemId` |
+| GET, PUT, DELETE | `/actions/<action_id>` | Read / update / delete Action |
+| GET, POST | `/items/<item_id>/actions` | List / create with parent from URL |
 
-The four data shapes have separate jobs even when their fields overlap. A caller
-supplies a **Request**; EF persists a **Model**; a service returns a **DTO**; a
-controller sends a **Response**. This prevents EF navigation graphs or persistence
-concerns from becoming the public API contract.
+POST returns 201 plus canonical Location; Item Location is `/items/<id>` and either
+Action creation form uses `/actions/<id>`. GET/PUT return 200; DELETE returns an
+empty 204. Missing resources/parents return 404 Problem Details. An existing parent
+with no children returns an empty list. There are no nested Action get/update/delete
+routes. Requests reject unknown fields. Nested creation and Action update do not
+accept `itemId`. Action's parent is immutable through this API.
 
-## Repository structure and existing contracts
+Names are required, nonblank, and at most 200 characters. Names need not be unique.
+Item status is `active` or `archived`; new Items are active. Action type is `create`,
+`update`, or `delete`. Numeric and quoted-number enum values are rejected. IDs are
+UUIDs; input UUID zero is rejected. Malformed UUID paths are routing 404s, while
+invalid body UUIDs are validation 400s. Marshmallow fields convert to snake_case
+Python attributes, UUIDs, and StrEnums. Services also validate direct calls.
 
-```text
-GoalStats.Template.sln
-├── src/GoalStats.Template.Api
-│   ├── Program.cs
-│   ├── Extensions
-│   │   ├── ApiExtensions.cs
-│   │   ├── DatabaseExtensions.cs
-│   │   └── CacheExtensions.cs
-│   ├── Controllers
-│   │   ├── ItemsController.cs
-│   │   ├── ActionsController.cs
-│   │   └── MetaController.cs
-│   ├── Models
-│   │   ├── ItemModel.cs
-│   │   ├── ActionModel.cs
-│   │   └── ITimestampedEntity.cs
-│   ├── Dtos
-│   │   ├── Item
-│   │   │   ├── ItemDto.cs
-│   │   │   ├── Requests
-│   │   │   └── Responses
-│   │   └── Action
-│   │       ├── ActionDto.cs
-│   │       ├── Requests
-│   │       └── Responses
-│   ├── Services
-│   ├── Mappers
-│   │   ├── ItemMapper.cs
-│   │   └── ActionMapper.cs
-│   ├── Infrastructure
-│   │   ├── Database
-│   │   │   ├── TemplateDbContext.cs
-│   │   │   ├── Configurations
-│   │   │   ├── Migrations
-│   │   │   ├── PostgresHealthCheck.cs
-│   │   │   └── Repositories/{Item,Action}
-│   │   └── Cache
-│   │       ├── ICache.cs / RedisCache.cs
-│   │       ├── CacheOptions.cs / RedisHealthCheck.cs
-│   │       ├── Item/IItemCache.cs / ItemCache.cs
-│   │       └── Action/IActionCache.cs / ActionCache.cs
-│   ├── Exceptions
-│   └── Enums
-├── tests/GoalStats.Template.Api.UnitTests
-└── tests/GoalStats.Template.Api.IntegrationTests
-```
+Item JSON: `id`, `name`, `status`, `createdAt`, `updatedAt`.
+Action JSON: `id`, `itemId`, `name`, `type`, `createdAt`, `updatedAt`.
+No ORM state or relationship graphs are returned. Timestamps are UTC-aware; updates
+preserve creation time and advance modification time, including unchanged PUTs.
+Lists order by creation time and UUID as tie-breaker.
 
-One production project; both test projects reference it.
+## Database and transactions
 
-### Persistence and naming invariants
+`items` has a UUID PK, required bounded/nonblank name, constrained string status,
+and non-null timezone-aware timestamp columns. `actions` has the same core fields,
+a constrained action type, and an indexed FK to `items` with ON DELETE CASCADE.
+No Python-side cascade graph is needed. Alembic revision `b7f42e9c1a60` establishes
+this fresh Python schema. Python supplies UUID/timestamp defaults on ORM insertion;
+direct SQL writers must supply those values explicitly.
 
-Repository write methods save internally. A save commits **all pending tracked
-changes on the scoped TemplateDbContext**; do not stage unrelated changes across
-repository calls. Mutation methods consume entities from GetForUpdateAsync on the
-same scoped context. Reads are no-tracking; lists order by CreatedAt then Id.
-There is no custom UnitOfWork. Action creation maps only the specific parent FK
-failure to a false result; the service decides the parent-not-found error.
+Each service operation owns a fresh transaction/session. Repositories can query,
+add, delete, or flush, but do not commit. A successful context exit commits; any
+failure rolls back and closes. Results are built inside the session; cache writes
+or invalidation happen after successful exit. A failed flush/commit cannot trigger
+successful mutation-related cache changes.
 
-TemplateDbContext, repositories and services are scoped. ICache, ItemCache and
-ActionCache are singleton: their dependencies are singleton-safe and they hold no
-request state or DbContext. CacheOptions uses IOptions with startup validation.
+Update/delete lock their target rows. Action creation locks its parent before
+inserting, serializing it with parent deletion; the database FK remains the final
+relationship invariant. Overlapping operations may observe either legitimate
+ordering. There is no generic repository, DI framework, or custom UnitOfWork class.
 
-Domain names, domain folders and domain namespaces are singular: `Item` and
-`Action` (`Dtos/Item`, `Dtos/Action`, `Repositories/Item`, `Repositories/Action`,
-`Cache/Item`, `Cache/Action`). Plural names express collection semantics:
-`/items`, `/actions`, `DbSet<ItemModel> Items`, `DbSet<ActionModel> Actions`, SQL `Items` and
-`Actions`, and the `ItemModel.Actions` navigation. Category folders such as Requests
-and Responses retain their existing names.
+## Cache behavior
 
-### Logging and exceptions
+RedisCache owns bounded GET/SET/DEL, JSON, and safe failure logging. Resource caches
+own `{prefix}:items:<uuid>` and `{prefix}:actions:<uuid>` keys, schema validation,
+identity checking, and TTL (default 300 seconds). Prefixes separate services and
+environments. Cache payloads use explicit scalar schemas, never pickle or ORM objects.
 
-Services use standard .NET logging directly:
+GET-by-ID is cache-aside; a miss queries PostgreSQL and fills Redis. Lists remain
+uncached. Creation does not fill the cache. Update/delete invalidate after commit.
+Malformed/incomplete/wrong-identity cache payloads are misses. Redis connection,
+permission, or serialization failures do not invalidate successful PostgreSQL work.
+Logs omit raw URLs, credentials, payloads, and provider error messages.
 
-- ItemService → `ILogger<ItemService>` → `GoalStats.Template.Api.Services.ItemService`
-- ActionService → `ILogger<ActionService>` → `GoalStats.Template.Api.Services.ActionService`
+An Action cache hit still checks database row existence. If cascade deletion removed
+it, the service discards the cached child and returns 404, even if Redis deletion
+fails. Item deletion never scans child cache keys or couples itself to ActionCache.
+This existence check is not atomic with overlapping deletions.
 
-`ILogger<T>` gives each class a category while all loggers use the same underlying
-.NET logging infrastructure: the host-managed `ILoggerFactory` and configured
-providers. ASP.NET Core supplies these loggers automatically through DI.
-Services use constant Debug templates with Domain and resource IDs for missing
-resources, cache fallback, parent FK races, and stale Action rejection. Enable
-Debug for either service category, or `GoalStats.Template.Api.Services`, when diagnosing
-behavior. No request payloads or routine CRUD success
-messages are logged. RedisCache owns cache failure warnings; ApiExceptionHandler
-owns sanitized unexpected-error logging. Services do not catch/log/rethrow failures.
-Stale-cache logs describe requesting removal, since removal is best-effort.
+Cache and PostgreSQL are not one transaction. Failed invalidation or concurrent
+cache fills can leave stale values until TTL expiry. The child check protects
+absent Actions, not freshness of still-existing rows. Item cache hits do not query
+the database. Do not claim stronger consistency than these guarantees.
 
-Services throw `ItemNotFoundException` or `ActionNotFoundException`, derived from
-`NotFoundException`. IDs remain internal read-only properties; HTTP details use safe messages
-without resource IDs. Missing parents in Action workflows use ItemNotFoundException.
-Typed Create/Update validation overloads reuse DataAnnotations through a private
-ValidateAnnotations helper for direct callers outside MVC. RequestValidationException
-remains shared, including the empty Action parent-ID check.
+## Operations and errors
 
-## Boundaries and folder responsibilities
+`/health` is provider-independent liveness. `/ready` requires exact Alembic heads
+and usable mapped columns; missing revision/table/column or unavailable PostgreSQL
+is 503 Unhealthy. With PostgreSQL ready, a successful bounded Redis GET gives
+200 Healthy; missing/unavailable Redis gives 200 Degraded. Consumers waiting for
+startup must require 200 and Healthy. Full schema drift checks use Alembic, not
+per-request schema autogeneration.
 
-Paths below are relative to `src/GoalStats.Template.Api/`.
+App-owned Redis resources are closed when their app/test/CLI owner is retired,
+not at request teardown. Domain operations close their SQLAlchemy sessions; the
+foundation request-session facility retains its rollback/close contract. Import
+and factory construction never connect, migrate, seed, or call external APIs.
 
-| Folder | What belongs here | Boundary |
-| --- | --- | --- |
-| Controllers/ | Routes, binding, service calls, response mapper calls, HTTP status metadata; MetaController operational transport | No direct DbContext or Redis access |
-| Dtos/ | Service/cache DTOs, Requests/, Responses/ in singular domain folders | No EF navigation graphs in service DTOs |
-| Enums/ | Domain classifications and their defined values | JSON and database representations are intentional contracts |
-| Exceptions/ | Domain errors and the central API exception handler | Public error details must remain safe |
-| Extensions/ | Detailed API, database and cache registrations | Program keeps high-level composition and pipeline visible |
-| Infrastructure/Database/ | DbContext, EF configurations/migrations, repositories, PostgreSQL health | Persistence belongs behind repositories |
-| Infrastructure/Cache/ | Generic adapter, domain wrappers, cache options and Redis health | Keys/TTL belong to domain wrappers, not services |
-| Mappers/ | DTO → Response conversion | Controllers call these instead of repeating field mapping |
-| Models/ | ItemModel, ActionModel and timestamped-entity contract | Models are not returned directly over HTTP |
-| Services/ | Validation, orchestration, Model → DTO conversion | No DbContext, raw Redis calls or HTTP response construction |
-
-UNIT TESTS FOLLOW LOGIC
-
-INTEGRATION TESTS FOLLOW BOUNDARIES
-
-SMOKE TESTS FOLLOW BUILT SYSTEM
-
-Controllers contain no business logic and are tested through integration, not a
-parallel unit delegation suite. Exception classes have unit contracts; the HTTP
-handler/pipeline has integration evidence. Models have unit object behavior and
-real database persistence evidence. Services have unit decisions and separate real
-provider collaboration coverage, often through HTTP/cache integration. Tests follow
-logic and boundaries rather than mirroring every production folder. The
-[testing matrix](TESTING.md#test-placement) defines each concern's ownership.
-
-`tests/GoalStats.Template.Api.UnitTests/` exercises isolated behavior; integration tests use
-hosted HTTP and real infrastructure where required. See the
-[operational test overview](DEVELOPMENT.md#test-overview) for running them.
-
-## Dependency injection and composition
-
-Constructor injection means a class asks for its dependencies as constructor
-parameters rather than constructing them itself. ASP.NET Core supplies registered
-implementations. For example, ItemsController asks for IItemService and IActionService;
-[Program.cs](../src/GoalStats.Template.Api/Program.cs) registers:
-
-```csharp
-builder.Services.AddScoped<IItemService, ItemService>();
-builder.Services.AddScoped<IActionService, ActionService>();
-```
-
-A **scoped** instance is shared within one scope, normally one HTTP request.
-TemplateDbContext, domain repositories and domain services are scoped. A **singleton**
-is shared across the application host. ICache/RedisCache and the domain caches are
-singletons; they do not hold request-specific state or a scoped DbContext.
-
-| Registration group | Implementation | Responsibility |
-| --- | --- | --- |
-| AddApi() | [ApiExtensions](../src/GoalStats.Template.Api/Extensions/ApiExtensions.cs) | Controllers, JSON enums, Problem Details, exception handler, Swagger generation |
-| AddDatabase(configuration) | [DatabaseExtensions](../src/GoalStats.Template.Api/Extensions/DatabaseExtensions.cs) | Npgsql/DbContext, scoped repositories, PostgreSQL readiness |
-| AddCache(configuration) | [CacheExtensions](../src/GoalStats.Template.Api/Extensions/CacheExtensions.cs) | Validated cache options, Redis provider, singleton caches, Redis readiness |
-| Domain service registrations | [Program](../src/GoalStats.Template.Api/Program.cs) | Explicit service interface → implementation composition |
-
-After building the app, Program emits the missing-Redis warning when applicable.
-It installs exception handling, then status-code pages, then conditionally installs
-Swagger middleware. It maps controllers, then runs the app. MetaController owns
-`/health` and `/ready`; Program contains no separate operational endpoint mappings.
-Startup does not apply migrations or seed data.
-
-MetaController delegates directly to HealthCheckMiddleware using the registered
-HealthCheckService. `/health` selects no checks; `/ready` selects the `ready` tag.
-The controller performs no provider probing or readiness aggregation. Database and
-cache extensions retain registration; PostgresHealthCheck and RedisHealthCheck
-retain provider logic. GET is documented, but route-only attributes preserve all
-methods. ApiExplorer excludes both endpoints from Swagger. Responses remain plain
-text: 200 `Healthy`, 200 `Degraded`, or 503 `Unhealthy`; startup waits require 200
-plus `Healthy`. Controller transport is integration-tested.
-
-## POST /items walkthrough
-
-Send this body through Swagger's `POST /items` operation:
-
-```json
-{ "name": "My first item" }
-```
-
-| Step / actual file and method | Contribution |
-| --- | --- |
-| [CreateItemRequest](../src/GoalStats.Template.Api/Dtos/Item/Requests/CreateItemRequest.cs) | Defines required Name with the 200-character limit; MVC checks HTTP input |
-| [ItemsController.Create](../src/GoalStats.Template.Api/Controllers/ItemsController.cs) | Passes the request and cancellation token to IItemService |
-| [ItemService.CreateAsync](../src/GoalStats.Template.Api/Services/ItemService.cs) | Validates again for non-HTTP callers, constructs ItemModel and awaits persistence |
-| [ItemRepository.CreateAsync](../src/GoalStats.Template.Api/Infrastructure/Database/Repositories/Item/ItemRepository.cs) | Adds the entity to the DbContext and awaits SaveChangesAsync |
-| [TemplateDbContext.SaveChangesAsync](../src/GoalStats.Template.Api/Infrastructure/Database/TemplateDbContext.cs) | Stamps UTC timestamps; EF/Npgsql writes the row to PostgreSQL |
-| ItemService's ToDto | Builds ItemDto from the saved model; creation does not populate cache |
-| [ItemMapper.ToResponse](../src/GoalStats.Template.Api/Mappers/ItemMapper.cs) | Converts the DTO into ItemResponse |
-| ItemsController.Create | Returns 201 Created and a Location pointing to `/items/{itemId}` |
-
-The model supplies the UUID. The response includes `id`, `name`, `status`,
-`createdAt`, and `updatedAt`; a new Item has status `active`.
-
-**Breakpoints:** start at ItemsController.Create, then ItemService.CreateAsync,
-ItemRepository.CreateAsync, TemplateDbContext.SaveChangesAsync and
-ItemMapper.ToResponse. Continue execution before judging readiness timeouts; a
-paused debugger can delay other requests.
-
-## GET /items/{id} walkthrough
-
-Use the `id` returned by POST in Swagger's GET operation.
-
-1. [ItemsController.Get](../src/GoalStats.Template.Api/Controllers/ItemsController.cs) calls ItemService.GetAsync.
-2. [ItemService.GetAsync](../src/GoalStats.Template.Api/Services/ItemService.cs) asks ItemCache for that ID.
-3. [ItemCache.GetAsync](../src/GoalStats.Template.Api/Infrastructure/Cache/Item/ItemCache.cs) constructs `{prefix}:items:{id:D}` and calls ICache.GetAsync&lt;ItemDto&gt;.
-4. [RedisCache.GetAsync](../src/GoalStats.Template.Api/Infrastructure/Cache/RedisCache.cs) reads through the distributed-cache provider and deserializes the payload.
-5. **Hit:** the service returns the cached ItemDto without loading the Item from PostgreSQL.
-6. **Miss:** the service awaits ItemRepository.GetByIdAsync, which performs a no-tracking query. A missing row becomes ItemNotFoundException. Otherwise the service maps the model to ItemDto and awaits ItemCache.SetAsync before returning it.
-7. The controller invokes ItemMapper.ToResponse and returns 200 with ItemResponse.
-
-Invalid payloads and provider failures fall back to the database. Caller
-cancellation remains cancellation rather than a cache miss. The provider adapter
-bounds each generic cache operation to two seconds.
-
-**Breakpoints:** ItemsController.Get → ItemService.GetAsync → ItemCache.GetAsync →
-RedisCache.GetAsync. On the first uncached read, follow ItemRepository.GetByIdAsync
-and ItemCache.SetAsync. On a repeat read, the Item repository lookup may not run.
-An Action cache hit is different: it still checks row existence, as described below.
-
-## Current design decisions
-
-| Decision | Reason in this template |
-| --- | --- |
-| Repository interfaces instead of DbContext in services | Keep EF query/save behavior in one layer; service orchestration can be tested with controlled dependencies |
-| Domain cache wrappers | Keep resource keys and TTL policy out of services and the generic adapter |
-| DTO separate from Response | Service/cache data and HTTP contracts can evolve deliberately without exposing EF entities |
-| Model → DTO in services | Services return their own data contract after coordinating dependencies |
-| DTO → Response in mappers | Controllers reuse explicit public-response mapping |
-| Redis optional | PostgreSQL remains authoritative; cache failure permits database fallback and degraded readiness |
-| Explicit migrations | Operators choose the target database and when existing schema changes are applied |
-| No generic repository currently needed | Concrete interfaces express the actual Item/Action queries and writes |
-| No custom UnitOfWork currently needed | Repository writes already save all pending changes in the scoped DbContext |
-| No custom middleware currently needed | Built-in exception handling, status-code pages and endpoint handling cover the current pipeline |
-
-These are current design decisions, not permanent prohibitions on future reviewed
-requirements. Preserve the existing boundaries when working with the current design.
-
-
-## Item / Action relationship and persistence
-
-```text
-Item 1 ─── many Actions
-Actions.ItemId → Items.Id (ON DELETE CASCADE)
-```
-
-Item: UUID Id, Name, Status, CreatedAt, UpdatedAt, and an Actions navigation.
-Action: UUID Id, required ItemId, Name, Type, CreatedAt, UpdatedAt, and Item navigation.
-DTOs contain scalar fields only, without navigation graphs or embedded child lists.
-
-Names are required, nonblank and limited to 200 characters. Names need not be
-unique. ItemStatus is `active`/`archived` (stored as 0/1). ActionType is
-`create`/`update`/`delete` (stored as 0/1/2). JSON number tokens and unknown enum
-values are rejected. The .NET 8 string-enum converter also accepts quoted numbers
-for defined values (for example, `"0"`); clients should send the named strings.
-ActionType is an editable classification; it does not execute an operation or
-represent audit history.
-
-`Item` and `Action` are domain names. Classes specify their role: persistence
-entities are `GoalStats.Template.Api.Models.ItemModel` and `GoalStats.Template.Api.Models.ActionModel`,
-in `Models/ItemModel.cs` and `Models/ActionModel.cs`. Use these types directly,
-without model aliases. Domain folders and namespaces remain `Item` and `Action`;
-SQL tables remain `Items` and `Actions`. Both models implement
-`ITimestampedEntity`, processed in one pass by `TemplateDbContext` for synchronous and
-asynchronous saves. Both entities receive UTC timestamps on EF insertion. Updates preserve CreatedAt
-and refresh UpdatedAt, including unchanged PUT values. Bulk/direct SQL bypasses
-this timestamp handling. Action ownership is immutable through the API and normal
-EF saves; PUT does not accept ItemId. PostgreSQL enforces the parent FK and cascades
-Action deletion when its Item is deleted. Actions.ItemId is indexed.
-
-Nested creation/listing lives under `/items/{itemId}/actions`. CreateItemActionRequest
-has no ItemId: the controller constructs the service request using the route's parent
-ID. PUT cannot change Action ownership. PostgreSQL cascades Action deletion when
-the parent is deleted; an Action read rejects a stale cached child whose row is gone.
-
-## HTTP contract
-
-| Method | Route | Request | Success |
-| --- | --- | --- | --- |
-| GET | `/items` | None | 200 + ItemResponse array |
-| POST | `/items` | `{ "name": "Example" }` | 201 + ItemResponse + Location |
-| GET | `/items/{itemId}` | None | 200 + ItemResponse |
-| PUT | `/items/{itemId}` | `{ "name": "Updated", "status": "archived" }` | 200 + ItemResponse |
-| DELETE | `/items/{itemId}` | None | 204 |
-| GET | `/items/{itemId}/actions` | None | 200 + ActionResponse array |
-| POST | `/items/{itemId}/actions` | `{ "name": "Example", "type": "create" }` | 201 + ActionResponse + Location |
-| GET | `/actions` | None | 200 + ActionResponse array |
-| POST | `/actions` | `{ "itemId": "<uuid>", "name": "Example", "type": "create" }` | 201 + ActionResponse + Location |
-| GET | `/actions/{actionId}` | None | 200 + ActionResponse |
-| PUT | `/actions/{actionId}` | `{ "name": "Updated", "type": "update" }` | 200 + ActionResponse |
-| DELETE | `/actions/{actionId}` | None | 204 |
-
-ItemResponse: `id`, `name`, `status`, `createdAt`, `updatedAt`.
-ActionResponse: `id`, `itemId`, `name`, `type`, `createdAt`, `updatedAt`.
-Lists order by CreatedAt then Id. Item creation defaults to active.
-Both Action creation routes return canonical Location `/actions/{actionId}`.
-Nested creation takes the ItemId only from the route. The separate nested request
-DTO has no ItemId; Action request DTOs reject unmapped fields, including attempts
-to supply ItemId to nested creation or update. Top-level Action creation requires
-a non-empty ItemId. No nested Action get/update/delete endpoints are exposed.
-
-Missing resources/parents return 404 Problem Details. Existing parents without
-Actions return `[]`; nested operations on missing parents return 404. Invalid
-input returns 400. Unexpected failures return generic 500 Problem Details without
-internal exception information. Unexpected application logs omit raw exception
-messages/inner exceptions. The framework's duplicate exception logging is disabled.
-There are no production debug endpoints. Resource routes use `/items` and `/actions`.
-
-## Cache behavior and consistency
-
-Both resources use GET-by-ID cache-aside. Services read their domain cache, load
-PostgreSQL on a miss, map to DTO and populate the cache. Create does not populate
-cache; lists are uncached. Update/delete invalidate only after repository success.
-Post-commit invalidation uses CancellationToken.None; request-driven I/O propagates
-cancellation. Cache failures produce safe warnings and permit PostgreSQL fallback.
-
-| Domain cache | Payload | Key | Absolute TTL |
-| --- | --- | --- | --- |
-| ItemCache | ItemDto | `{prefix}:items:{itemId:D}` | DefaultTtlSeconds |
-| ActionCache | ActionDto | `{prefix}:actions:{actionId:D}` | DefaultTtlSeconds |
-
-The default prefix is `goalstats-template` and TTL is 300 seconds. JSON uses the configured
-MVC serializer options. Required payload members make incomplete Item/Action JSON
-a cache miss. Generic Redis operations have a two-second wait budget.
-
-**Action cache hits still query PostgreSQL.** ActionService calls ExistsAsync before
-returning a cached Action. If the row is absent, it removes the stale entry and
-returns 404. This protects reads following a completed parent Item deletion, which
-cascades to Actions without coupling ItemService to ActionCache. An existence
-check is not atomic with a concurrent deletion; overlapping requests can still race.
-
-ItemResponse has no Actions/count, so Action mutations do not invalidate Item cache.
-Redis is not transactional with PostgreSQL: concurrent fills, failed invalidation
-or late completion after the wait budget can leave stale values until TTL expiry.
-The Action safeguard protects absent rows, not freshness of existing-row updates.
-
-## Copying the template
-
-`GoalStats.Template.*` and `TemplateDbContext` are the explicit template identity.
-The intended downstream convention is `GoalStats.<DOMAIN>.*` and `<DOMAIN>DbContext`,
-for example `GoalStats.User.*` / `UserDbContext` or `GoalStats.Match.*` /
-`MatchDbContext`. DOMAIN-aware scaffolding is not yet implemented in team-squared-dev;
-this convention becomes automated only after the parent enhancement is released.
-
-1. Copy source/configuration into the new repository without `.git`, `.env`, build
-   outputs or test artifacts.
-2. Rename solution/project directories and files; update namespaces, solution
-   entries, test ProjectReferences, Docker paths/entrypoint and documented commands.
-3. If renaming the context, update DbContextOptions, DI, repositories, health checks,
-   fixtures, migration designer attributes and snapshot identifiers together.
-4. Choose service-specific database/test names and cache prefixes. Update fixture
-   database safety checks consistently; configure credentials outside appsettings.
-5. Keep migration IDs and SQL operations for naming-only changes. Run the pending
-   model check and test both fresh and existing migrated databases. Use reviewed
-   migrations for actual schema changes.
-6. Replace the example resources as the real service develops, then run build,
-   PostgreSQL/Redis tests and Docker smoke checks.
-
-A new timestamped model implements ITimestampedEntity; the existing save-time pass
-handles its timestamps without another model-specific loop. Keep persistence in
-resource repositories and cache policy in domain caches. This is a source scaffold,
-not a packaged `dotnet new` template.
+Safe Problem Details handlers own validation, domain, framework, and unexpected
+errors. flask-smorest documents resource schemas, enum values, validation statuses,
+canonical Location headers, and the shared Problem response. Meta paths are excluded.
+Swagger is served at `/swagger` with local pinned assets and the generated spec at
+`/swagger/v1/swagger.json`. LOCAL reloads source; DEV uses a non-root built Gunicorn
+image; TEST owns disposable providers. See [Development](DEVELOPMENT.md) for runtime
+identities and cleanup. No User or prediction domain is present.

@@ -1,0 +1,326 @@
+"""Small Docker workflow shared by Make, smoke, and certification (standard library only)."""
+
+import argparse
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE = "goalstats-template-py:tooling"
+HELP = """GoalStats Flask — LOCAL reloads mounted source; DEV runs built Gunicorn.
+SETUP     make setup                 Verify tools; create missing private env files
+          make build ENV=local|dev   Build the selected runtime
+RUNTIME   make run ENV=local|dev     Start and wait for exactly 200 Healthy
+          make stop ENV=local|dev    Remove selected containers/network; retain DB volume
+          make logs ENV=local|dev    Show recent selected-stack logs
+DATABASE  make migrate ENV=local|dev Upgrade selected database to Alembic head
+          make migration MESSAGE=\"description\"  Generate LOCAL revision for review
+          make migration-check ENV=local|dev     Check selected database model drift
+TEST      make unit                  Provider-independent unit suite
+          make integration           Isolated TEST providers and integration suite
+          make test                  Unit + integration once, isolated TEST providers
+          make coverage              Same full suite with terminal coverage
+          make smoke                 Disposable built DEV HTTP smoke
+          make certify               Disposable LOCAL/DEV workflow certification
+QUALITY   make check                 Ruff lint/format check and strict mypy
+Default ENV=local. Unknown environments are refused. No command auto-commits.
+"""
+
+
+def run(args, *, capture=False, env=None, check=True):
+    """Terminate/reap the CLI child before outer resource cleanup on interruption."""
+    process = subprocess.Popen(
+        [str(a) for a in args],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+        text=True,
+    )
+    try:
+        stdout, stderr = process.communicate()
+    except BaseException:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        raise
+    if check and process.returncode:
+        # Do not print Compose config/command arguments, which can contain credentials.
+        if capture and stderr:
+            print(stderr, file=sys.stderr)
+        raise subprocess.CalledProcessError(process.returncode, args[0])
+    return subprocess.CompletedProcess(args[0], process.returncode, stdout, stderr)
+
+
+def interrupted(signum, _frame):
+    raise SystemExit(128 + signum)
+
+
+def install_signals():
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGINT, interrupted)
+
+
+def setup(directory=ROOT):
+    for tool in ("docker", "make"):
+        if shutil.which(tool) is None:
+            raise RuntimeError(f"Required tool missing: {tool}")
+    if sys.version_info < (3, 12):  # noqa: UP036 - host prerequisite check
+        raise RuntimeError(
+            "Python 3.12 or newer is required for host orchestration; image uses 3.12"
+        )
+    run(["docker", "compose", "version"])
+    run(["docker", "info"], capture=True)
+    for env, port in (("local", 5100), ("dev", 5200)):
+        path = directory / f".env.{env}"
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            print(f"Preserved existing {path.name}")
+            continue
+        with os.fdopen(fd, "w") as stream:
+            stream.write(f"POSTGRES_PASSWORD={secrets.token_hex(24)}\nAPP_PORT={port}\n")
+        print(f"Created private {path.name}")
+    print("Next: make build ENV=local; make migrate ENV=local; make run ENV=local")
+
+
+def read_settings(path):
+    if not path.exists():
+        raise RuntimeError("Missing environment file; run make setup")
+    values = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            key, sep, value = line.partition("=")
+            if not sep or key not in {"POSTGRES_PASSWORD", "APP_PORT"}:
+                raise RuntimeError("Environment file permits only POSTGRES_PASSWORD and APP_PORT")
+            values[key] = value
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{16,128}", values.get("POSTGRES_PASSWORD", "")):
+        raise RuntimeError("POSTGRES_PASSWORD must be 16–128 URL-safe characters")
+    if not values.get("APP_PORT", "").isdigit() or not 1 <= int(values["APP_PORT"]) <= 65535:
+        raise RuntimeError("APP_PORT must be a valid port number")
+    return values
+
+
+class Stack:
+    def __init__(self, env, *, project=None, settings=None):
+        if env not in {"local", "dev", "test"}:
+            raise RuntimeError("ENV must be local or dev (TEST is managed automatically)")
+        self.env = env
+        self.project = project or f"goalstats-template-py-{env}"
+        self.disposable = project is not None
+        if self.disposable and not re.fullmatch(
+            r"goalstats-template-py-(test|cert)-[a-f0-9]+", project
+        ):
+            raise RuntimeError("Disposable project must use a unique owned test/cert identity")
+        self.settings = settings if settings is not None else read_settings(ROOT / f".env.{env}")
+        # Ignore ambient application/Compose settings, and never source shell env files.
+        self.process_env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+        self.process_env.update(self.settings)
+        self.args = [
+            "docker",
+            "compose",
+            "--env-file",
+            os.devnull,
+            "-p",
+            self.project,
+            "-f",
+            ROOT / "docker" / f"compose.{env}.yml",
+        ]
+        self.service = "runner" if env == "test" else "app"
+
+    def compose(self, *args, **kwargs):
+        return run([*self.args, *args], env=self.process_env, **kwargs)
+
+    def providers(self):
+        self.compose("up", "-d", "--wait", "--wait-timeout", "60", "postgres", "redis")
+
+    def command(self, *args, options=(), **kwargs):
+        name = self.project + "-oneoff-" + secrets.token_hex(6)
+        try:
+            return self.compose(
+                "run",
+                "--rm",
+                "--no-deps",
+                "-T",
+                "--name",
+                name,
+                *options,
+                self.service,
+                *args,
+                **kwargs,
+            )
+        finally:
+            run(["docker", "rm", "-f", name], capture=True, check=False)
+
+    def migrate(self):
+        self.providers()
+        self.command("alembic", "upgrade", "head")
+
+    def start(self):
+        self.compose("up", "-d", "--wait", "--wait-timeout", "90", "app")
+        wait_ready(self.url)
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.settings['APP_PORT']}"
+
+    def stop(self, *, volumes=False):
+        if volumes and not self.disposable:
+            raise RuntimeError("Refusing removal of persistent developer volumes")
+        # A second signal must not interrupt resource cleanup.
+        old = {s: signal.signal(s, signal.SIG_IGN) for s in (signal.SIGTERM, signal.SIGINT)}
+        try:
+            self.compose(
+                "down", "--remove-orphans", "--timeout", "15", *(["--volumes"] if volumes else [])
+            )
+        finally:
+            for sig, handler in old.items():
+                signal.signal(sig, handler)
+
+
+def wait_ready(url, timeout=45):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        try:
+            with urllib.request.urlopen(url + "/ready", timeout=2) as response:
+                if response.status == 200 and response.read() == b"Healthy":
+                    return
+        except (OSError, urllib.error.URLError):
+            pass
+        time.sleep(0.25)
+    raise RuntimeError("Startup requires HTTP 200 and exact Healthy; readiness timed out")
+
+
+def build_tooling():
+    run(["docker", "build", "--target", "tooling", "-t", IMAGE, "."])
+
+
+def tool_command(*command):
+    name = "goalstats-template-py-tool-" + secrets.token_hex(6)
+    try:
+        run(["docker", "run", "--rm", "--name", name, "--network", "none", IMAGE, *command])
+    finally:
+        run(["docker", "rm", "-f", name], capture=True, check=False)
+
+
+def tests(mode, *, fault=None, project=None):
+    build_tooling()
+    if mode == "unit":
+        tool_command("pytest", "-q", "-p", "no:cacheprovider", "tests/unit")
+        return
+    stack = Stack(
+        "test",
+        project=project or "goalstats-template-py-test-" + secrets.token_hex(6),
+        settings={"POSTGRES_PASSWORD": secrets.token_hex(24)},
+    )
+    try:
+        if fault == "provider":
+            # Real failed provider startup under the same finally/ownership boundary.
+            with tempfile.TemporaryDirectory() as directory:
+                override = Path(directory) / "failure.yml"
+                override.write_text('services:\n  postgres:\n    command: ["false"]\n')
+                stack.args += ["-f", override]
+                try:
+                    stack.providers()
+                finally:
+                    stack.args = stack.args[:-2]
+        else:
+            stack.providers()
+        stack.command("alembic", "upgrade", "missing_revision" if fault == "migration" else "head")
+        if fault == "signal":
+            print("SIGNAL_TEST_RUNNING", flush=True)
+            stack.command("python", "-c", "import time; time.sleep(300)")
+        target = "tests/integration" if mode == "integration" else "tests"
+        command = ["pytest", "-q", "-p", "no:cacheprovider", target]
+        if fault in {"unit", "integration"}:
+            command[-1] = "tests/" + fault
+            command += ["-o", "required_plugins=goalstats_deliberately_missing_plugin"]
+        if mode == "coverage":
+            command += ["--cov=goalstats_template", "--cov-report=term-missing"]
+        stack.command(*command)
+    finally:
+        stack.stop(volumes=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command")
+    parser.add_argument("--env", default=os.environ.get("ENV", "local"), choices=("local", "dev"))
+    args = parser.parse_args()
+    if args.env not in {"local", "dev"}:
+        parser.error("ENV must be local or dev")
+    install_signals()
+    command = args.command
+    if command == "help":
+        print(HELP)
+    elif command == "setup":
+        setup()
+    elif command in {"unit", "integration", "test", "coverage"}:
+        tests(command)
+    elif command == "check":
+        build_tooling()
+        tool_command("ruff", "check", "--no-cache", ".")
+        tool_command("ruff", "format", "--check", "--no-cache", ".")
+        tool_command("mypy", "--cache-dir=/tmp/mypy-cache")
+    elif command in {"smoke", "certify"}:
+        from certify_workflows import certify, smoke
+
+        (smoke if command == "smoke" else certify)()
+    elif command in {"build", "migrate", "run", "stop", "logs", "migration", "migration-check"}:
+        if command == "migration" and (
+            args.env != "local" or not os.environ.get("MESSAGE", "").strip()
+        ):
+            raise RuntimeError('Migration creation requires ENV=local and nonempty MESSAGE="..."')
+        stack = Stack(args.env)
+        if command == "build":
+            stack.compose("build", "app")
+        elif command == "migrate":
+            stack.migrate()
+        elif command == "run":
+            stack.start()
+            print(f"{args.env.upper()} ready: {stack.url}/swagger")
+        elif command == "stop":
+            stack.stop()
+        elif command == "logs":
+            stack.compose("logs", "--tail", "100")
+        elif command == "migration-check":
+            stack.providers()
+            stack.command("alembic", "check")
+        else:
+            stack.providers()
+            stack.command(
+                "alembic",
+                "revision",
+                "--autogenerate",
+                "-m",
+                os.environ["MESSAGE"],
+                options=(
+                    "--user",
+                    f"{os.getuid()}:{os.getgid()}",
+                    "-v",
+                    f"{ROOT / 'migrations'}:/app/migrations",
+                ),
+            )
+    else:
+        parser.error("Unknown command")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        print(f"Workflow failed: {exc}", file=sys.stderr)
+        sys.exit(exc.returncode if isinstance(exc, subprocess.CalledProcessError) else 1)
