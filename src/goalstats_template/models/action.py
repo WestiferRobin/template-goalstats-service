@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import CheckConstraint, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from goalstats_template.enums import ActionType
+from goalstats_template.enums.action import ActionType
 from goalstats_template.models.base import Base, Timestamped
 
 

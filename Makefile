@@ -3,6 +3,15 @@ ENV ?= local
 PYTHON ?= python3
 export ENV MESSAGE
 export PYTHONDONTWRITEBYTECODE = 1
-.PHONY: help setup build migrate run stop logs unit integration test smoke check coverage migration migration-check certify
-help setup build migrate run stop logs unit integration test smoke check coverage migration migration-check certify:
-	@$(PYTHON) scripts/workflow.py $@
+
+include make/install.mk
+include make/doctor.mk
+include make/dev.mk
+include make/db.mk
+include make/test.mk
+include make/coverage.mk
+include make/ci.mk
+
+.PHONY: help
+help:
+	@$(PYTHON) scripts/workflow.py help

@@ -1,7 +1,7 @@
 from sqlalchemy import CheckConstraint, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from goalstats_template.enums import ItemStatus
+from goalstats_template.enums.item import ItemStatus
 from goalstats_template.models.base import Base, Timestamped
 
 

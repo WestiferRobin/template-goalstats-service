@@ -2,8 +2,8 @@
 !requirements.txt
 !src/
 !src/**
-!migrations/
-!migrations/**
+!alembic/
+!alembic/**
 !alembic.ini
 !tests/
 !tests/**

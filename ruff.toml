@@ -3,3 +3,7 @@ line-length = 100
 
 [lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[lint.isort]
+# The migration directory is not the installed Alembic package.
+known-third-party = ["alembic"]

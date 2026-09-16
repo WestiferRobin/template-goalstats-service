@@ -7,7 +7,7 @@ RUN python -m pip install --no-cache-dir --no-deps -r requirements.txt \
     && groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home app
 COPY src/ ./src/
-COPY migrations/ ./migrations/
+COPY alembic/ ./alembic/
 COPY alembic.ini ./
 USER 10001:10001
 EXPOSE 8000
