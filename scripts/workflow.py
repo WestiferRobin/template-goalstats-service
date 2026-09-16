@@ -289,7 +289,7 @@ def tests(mode, *, fault=None, project=None):
             command = ["pytest", "-q", "-p", "no:cacheprovider", "tests/" + fault]
             command += ["-o", "required_plugins=goalstats_deliberately_missing_plugin"]
         if mode == "coverage":
-            command += ["--cov=goalstats_template", "--cov-report=term-missing"]
+            command += ["--cov=src", "--cov-report=term-missing"]
         stack.command(*command)
     finally:
         stack.stop(volumes=True)

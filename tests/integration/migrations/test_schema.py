@@ -5,7 +5,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect
 
-from goalstats_template.models.base import Base
+from models.base import Base
 
 pytestmark = pytest.mark.postgres
 

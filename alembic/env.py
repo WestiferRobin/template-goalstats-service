@@ -3,10 +3,10 @@
 from alembic import context
 from sqlalchemy.engine import Connection
 
-from goalstats_template import models  # noqa: F401 — populate migration metadata
-from goalstats_template.infra.resources.db import Database
-from goalstats_template.models.base import Base
-from goalstats_template.settings.base import Settings
+import models  # noqa: F401 — populate migration metadata
+from infra.resources.db import Database
+from models.base import Base
+from settings.base import Settings
 
 target_metadata = Base.metadata
 

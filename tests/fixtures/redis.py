@@ -12,7 +12,7 @@ def redis_url():
         pytest.skip("TEST_REDIS_URL is not set; provision isolated Redis.")
     if os.environ.get("TEST_REDIS_DISPOSABLE") != "1":
         pytest.fail("TEST_REDIS_DISPOSABLE=1 is required.")
-    from goalstats_template.settings.base import redis_url as validate
+    from settings.base import redis_url as validate
 
     try:
         validate(value)

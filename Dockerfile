@@ -13,7 +13,7 @@ USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12 \
   CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2); assert r.status == 200 and r.read() == b'Healthy'"
-CMD ["gunicorn", "--bind=0.0.0.0:8000", "--workers=2", "--timeout=30", "--graceful-timeout=10", "--access-logfile=-", "--error-logfile=-", "goalstats_template:create_app()"]
+CMD ["gunicorn", "--bind=0.0.0.0:8000", "--workers=2", "--timeout=30", "--graceful-timeout=10", "--access-logfile=-", "--error-logfile=-", "main:create_app()"]
 
 FROM runtime AS tooling
 COPY tests/ ./tests/

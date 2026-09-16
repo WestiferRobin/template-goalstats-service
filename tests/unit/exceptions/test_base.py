@@ -1,4 +1,4 @@
-from goalstats_template.exceptions.base import DomainError, RequestValidationError
+from exceptions.base import DomainError, RequestValidationError
 
 
 def test_domain_private_exception_detail_is_not_public_contract():

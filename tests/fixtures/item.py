@@ -6,15 +6,15 @@ from uuid import uuid4
 
 import pytest
 
-from goalstats_template.enums.action import ActionType
-from goalstats_template.enums.item import ItemStatus
-from goalstats_template.infra.caches.action import ActionCache
-from goalstats_template.infra.caches.item import ItemCache
-from goalstats_template.infra.repositories.action import ActionRepository
-from goalstats_template.infra.repositories.item import ItemRepository
-from goalstats_template.models import Action, Item
-from goalstats_template.services.item.action import ActionService
-from goalstats_template.services.item.item import ItemService
+from enums.action import ActionType
+from enums.item import ItemStatus
+from infra.caches.action import ActionCache
+from infra.caches.item import ItemCache
+from infra.repositories.action import ActionRepository
+from infra.repositories.item import ItemRepository
+from models import Action, Item
+from services.item.action import ActionService
+from services.item.item import ItemService
 
 
 @dataclass

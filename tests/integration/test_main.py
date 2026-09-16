@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from goalstats_template.composition import get_database
+from composition import get_database
 
 
 def test_factory_instances_have_independent_resources(app_factory, explicit_config):
@@ -72,8 +72,8 @@ def audit(event, args):
         if writing_mode or writing_flags:
             raise AssertionError('Unexpected file write')
 sys.addaudithook(audit)
-from goalstats_template import create_app
-from goalstats_template.models.base import Base
+from main import create_app
+from models.base import Base
 assert set(Base.metadata.tables) == {'items', 'actions'}
 app = create_app({'APP_ENV': 'test', 'DATABASE_URL': 'postgresql://u:p@127.0.0.1:1/goalstats_test_import'})
 assert app.test_client().get('/health').text == 'Healthy'

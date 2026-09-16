@@ -1,6 +1,6 @@
 import pytest
 
-from goalstats_template.settings.base import ConfigurationError, Settings, boolean, database_url
+from settings.base import ConfigurationError, Settings, boolean, database_url
 
 URL = "postgresql://service:private_password@localhost/goalstats_test_config"
 

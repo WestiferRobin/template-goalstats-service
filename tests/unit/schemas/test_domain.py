@@ -3,15 +3,15 @@ from uuid import UUID, uuid4
 import pytest
 from marshmallow import ValidationError
 
-from goalstats_template.enums.action import ActionType
-from goalstats_template.enums.item import ItemStatus
-from goalstats_template.schemas.action.request import (
+from enums.action import ActionType
+from enums.item import ItemStatus
+from schemas.action.request import (
     CreateActionSchema,
     NestedActionSchema,
     UpdateActionSchema,
 )
-from goalstats_template.schemas.item.request import CreateItemSchema, UpdateItemSchema
-from goalstats_template.settings.base import ConfigurationError, Settings
+from schemas.item.request import CreateItemSchema, UpdateItemSchema
+from settings.base import ConfigurationError, Settings
 
 
 @pytest.mark.parametrize(

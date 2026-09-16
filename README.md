@@ -69,3 +69,10 @@ See the [documentation index](docs/README.md),
 [architecture/API contracts](docs/service/architecture.md),
 [developer workflow](docs/service/development.md), and
 [Make interface](docs/interface/make.md).
+
+## Flat source layout
+
+Application modules live directly under `src/`: `main.py`, `composition.py`,
+`enums/`, `exceptions/`, `settings/`, `models/`, `schemas/`, `infra/`, `services/`,
+and `routers/`. The factory is `main:create_app()`; no intermediate service package
+is present. See [template anchors and execution paths](docs/standard/template.md).

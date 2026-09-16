@@ -9,8 +9,8 @@ from alembic.config import Config
 from flask import Flask
 from sqlalchemy import text
 
-from goalstats_template.infra.resources.db import Database
-from goalstats_template.settings.base import Settings, database_url
+from infra.resources.db import Database
+from settings.base import Settings, database_url
 
 
 @pytest.fixture(scope="session")

@@ -5,15 +5,15 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from goalstats_template.enums.action import ActionType
-from goalstats_template.enums.item import ItemStatus
-from goalstats_template.exceptions.base import ActionNotFound, ItemNotFound, RequestValidationError
-from goalstats_template.infra.caches.action import ActionCache
-from goalstats_template.infra.repositories.action import ActionRepository
-from goalstats_template.infra.repositories.item import ItemRepository
-from goalstats_template.schemas.action.base import ActionResult
-from goalstats_template.schemas.item.base import ItemResult
-from goalstats_template.services.item.action import ActionService
+from enums.action import ActionType
+from enums.item import ItemStatus
+from exceptions.base import ActionNotFound, ItemNotFound, RequestValidationError
+from infra.caches.action import ActionCache
+from infra.repositories.action import ActionRepository
+from infra.repositories.item import ItemRepository
+from schemas.action.base import ActionResult
+from schemas.item.base import ItemResult
+from services.item.action import ActionService
 
 
 def test_cache_miss_fills_after_transaction(graph):

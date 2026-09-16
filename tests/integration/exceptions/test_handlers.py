@@ -3,8 +3,8 @@ from flask import request
 from marshmallow import Schema, ValidationError, fields
 from werkzeug.exceptions import BadRequest
 
-from goalstats_template.exceptions.base import DomainError
-from goalstats_template.routers import ApiBlueprint
+from exceptions.base import DomainError
+from routers import ApiBlueprint
 
 
 @pytest.fixture

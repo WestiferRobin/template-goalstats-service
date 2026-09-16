@@ -204,7 +204,7 @@ def certify():
                     "app",
                     "python",
                     "-c",
-                    "from goalstats_template import create_app; assert not create_app().debug",
+                    "from main import create_app; assert not create_app().debug",
                     capture=True,
                 )
                 assert result.returncode == 0

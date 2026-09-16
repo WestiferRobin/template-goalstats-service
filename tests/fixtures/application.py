@@ -3,7 +3,7 @@ from collections.abc import Callable, Iterator, Mapping
 import pytest
 from flask import Flask
 
-from goalstats_template import create_app
+from main import create_app
 
 
 @pytest.fixture

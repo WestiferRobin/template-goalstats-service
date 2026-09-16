@@ -6,14 +6,14 @@ from uuid import uuid4
 import pytest
 from redis.exceptions import RedisError
 
-from goalstats_template.enums.action import ActionType
-from goalstats_template.enums.item import ItemStatus
-from goalstats_template.infra.caches.action import ActionCache
-from goalstats_template.infra.caches.item import ItemCache
-from goalstats_template.infra.resources.redis import RedisCache
-from goalstats_template.schemas.action.base import ActionResult
-from goalstats_template.schemas.item.base import ItemResult
-from goalstats_template.settings.base import Settings
+from enums.action import ActionType
+from enums.item import ItemStatus
+from infra.caches.action import ActionCache
+from infra.caches.item import ItemCache
+from infra.resources.redis import RedisCache
+from schemas.action.base import ActionResult
+from schemas.item.base import ItemResult
+from settings.base import Settings
 
 
 @pytest.mark.parametrize("kind", ["item", "action"])

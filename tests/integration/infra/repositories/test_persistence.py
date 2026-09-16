@@ -7,12 +7,12 @@ import pytest
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 
-from goalstats_template.enums.item import ItemStatus
-from goalstats_template.exceptions.base import ItemNotFound
-from goalstats_template.infra.repositories.action import ActionRepository
-from goalstats_template.infra.repositories.item import ItemRepository
-from goalstats_template.models import Action, Item
-from goalstats_template.services.item.item import ItemService
+from enums.item import ItemStatus
+from exceptions.base import ItemNotFound
+from infra.repositories.action import ActionRepository
+from infra.repositories.item import ItemRepository
+from models import Action, Item
+from services.item.item import ItemService
 
 pytestmark = pytest.mark.postgres
 

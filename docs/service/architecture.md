@@ -122,10 +122,11 @@ identities and cleanup. No User or prediction domain is present.
 | `infra/caches` | Domain cache identity and serialization |
 | `infra/resources` | Engine/sessionmaker and Redis ownership, readiness, disposal |
 | `models/base.py` | The single authoritative SQLAlchemy Base and metadata |
+| `enums` | ItemStatus and ActionType reference values |
 | `settings` | Validated, instance-owned configuration |
 | `exceptions` | Framework-independent errors and Flask HTTP translation |
 
-All paths above are beneath `src/goalstats_template/`. Dependencies flow from
+All paths above are beneath `src/`. Dependencies flow from
 routers through services to concrete infrastructure and model/contract definitions.
 Services and infrastructure do not access Flask globals; composition is the
 framework boundary. Caches consume domain contracts rather than importing services.
