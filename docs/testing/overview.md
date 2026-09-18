@@ -26,8 +26,10 @@ and certification run them separately from application unit/integration ownershi
 Provider fixtures require explicitly disposable resources. Missing provider URLs in
 manual pytest runs produce explained skips; Make provisions providers, so canonical
 integration/full/coverage runs must have zero skips. Invalid or unavailable supplied
-providers fail. PostgreSQL uses a dedicated `goalstats_test_*` database; Redis cleanup
-is limited to each fixture's unique prefix. No FLUSHALL or shared database fallback.
+providers fail. PostgreSQL uses a dedicated `goalstats_test_*` database within an
+ownership-verified disposable provider; that name alone is not proof. Redis keys
+use fixture prefixes, and tests that change server-wide ACL state require the same
+verified disposable ownership. No shared database/cache fallback is permitted.
 Use one provider pair per concurrent pytest process; xdist is not configured.
 
 `make coverage` measures application unit/integration coverage only, inside the
@@ -37,3 +39,34 @@ Migration tests verify fresh upgrade, repeat safety, downgrade/re-upgrade, and
 
 See [smoke](smoke.md), [certification](certification.md), and
 [Make interface](../interface/make.md).
+
+## IDE integration debugging
+
+Both IDEs discover unit and integration tests from the repository root. Collection
+never provisions providers; smoke still requires explicit `--smoke`. Unit tests
+need no Docker or provider URLs. Run a folder, file, or single node with the repo
+`.venv/bin/python -m pytest`; never apply `.env.host.local` globally to testing.
+
+Run `make test-providers` in a terminal and leave it in the foreground. It starts
+fresh disposable TEST PostgreSQL/Redis with generated credentials and dynamic
+loopback ports, then prints only the path to a private `test.env`. In PyCharm make
+a pytest configuration for the desired integration file/node, root working directory,
+repo `.venv`, and this env file. In VS Code choose `pytest: owned TEST session` and
+enter that path and test node when prompted. This launch is separate from Test Explorer's
+ordinary discovery/unit environment. Use only one pytest process per session.
+The database fixture migrates the disposable database on first use.
+
+Before connecting, fixtures verify the private manifest, active owner lock/PID,
+exact Docker project, container IDs, Compose service/project labels, session token,
+running/healthy state, isolated network, tmpfs storage, exact loopback publications,
+and matching PostgreSQL/Redis URLs and credentials. Arbitrary URLs plus disposable
+flags or a test database name are insufficient. Stale or mismatched sessions fail
+closed. This protects PostgreSQL schema downgrade/delete operations and server-wide
+Redis ACL changes; key prefixes alone do not provide isolation.
+
+Canonical Docker `make integration`/`make test` retain automatic isolated provision,
+execution and cleanup. Their runner receives a read-only ownership receipt bound to
+its hostname and internal TEST URLs; no Docker socket is mounted into tests. Host
+execution cannot opt into that path by setting environment flags. Normal runs do
+not require an IDE session. Ctrl-C/SIGTERM on the host owner revokes its manifest,
+removes its exact owned resources and private files, and preserves LOCAL/DEV data.

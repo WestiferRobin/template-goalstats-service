@@ -1,3 +1,3 @@
-.PHONY: unit integration test smoke
-unit integration test smoke:
+.PHONY: unit integration test smoke test-providers
+unit integration test smoke test-providers:
 	@$(PYTHON) scripts/workflow.py $@

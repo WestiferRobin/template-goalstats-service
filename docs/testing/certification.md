@@ -35,3 +35,41 @@ Final release certification must independently repeat the checks from a fresh
 checkout and review Git status, migration history, identity anchors, and remote
 `legacy/dotnet` before publication. Passing this local workflow does not itself
 commit, push, or certify a future published SHA.
+
+## Automated host certification and manual IDE acceptance
+
+From a fresh candidate containing only intended files:
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip check
+make certify-host PYTHON=.venv/bin/python
+make check
+make unit
+make integration
+make test
+make migration-check ENV=local
+make smoke
+make certify
+```
+
+The migration-check target requires the candidate's own configured/migrated LOCAL
+providers; do not select a developer's stack as disposable certification infrastructure.
+The automated host certifier instead uses a unique disposable LOCAL project and
+runs the same Alembic check there. All certification app/provider ports are dynamic.
+
+`scripts/validation/certify_host.py` verifies Python 3.12/.venv, dependency consistency,
+Docker-free unit suite/folder/file/node execution, smoke-free collection, portable
+VS Code JSON, provider-only startup, host PostgreSQL/Redis connections, migrated
+readiness, direct main health and Item CRUD, persistence across provider stop/start,
+no child/reloader process, active full LOCAL protection, owned TEST individual
+repository/migration/Redis tests, stale/mismatched endpoint refusal, SIGINT/SIGTERM
+cleanup, and before/after resource equality (except retained build images/cache).
+Provider-free tooling tests exercise tampered ownership and unsafe env-file cases.
+No business schema or migration history is changed.
+
+Automated success means **READY FOR MANUAL IDE VERIFICATION**. Prompt 3 must exercise
+actual PyCharm Run/Debug and VS Code F5, verify breakpoints at `main`, router, service,
+repository and cache, and exercise IDE discovery and individual test selection.
+Do not report actual IDE debugger/discovery acceptance from CLI tests alone.

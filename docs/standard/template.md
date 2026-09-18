@@ -67,3 +67,35 @@ The remaining `goalstats_template` occurrences are intentional service identitie
 LOCAL/DEV database names (and their producers/ownership checks) and the isolated
 application logger label. They are not Python package references. Generic TEST
 identities and unrelated-resource sentinels remain intentionally generic.
+
+## Host development and propagation
+
+Host IDE support is additive to Docker. Flat `src/`, `main:create_app()`, Python 3.12,
+one `requirements.txt`, Item/Action behavior, HTTP/OpenAPI, database schema/migration
+history, Redis semantics and health/readiness contracts stay unchanged. Direct
+`src/main.py` adds only a LOCAL development entrypoint. `src/` is not a package;
+script execution naturally exposes it, pytest uses its configured paths, Alembic
+uses its existing prepend path, and Docker/Gunicorn use their existing PYTHONPATH.
+
+Track only portable `.vscode/settings.json`, `.vscode/launch.json`, and optional
+`.vscode/extensions.json`. Ignore `.idea/`, `.venv/`, `.env.host.local`, and
+`.host-sessions/`. No extra dotenv example or dependency manifest is introduced.
+
+Prompt 2 must extend the parent's exact `scripts/scaffold-transform.py:IDENTITY_PATHS`:
+
+- Database identities `goalstats_template_py_local` / `goalstats_template_py_dev`:
+  add `scripts/host_development.py` to their prefix's exact allowlist.
+- `goalstats-template-py`: add `scripts/host_development.py`,
+  `scripts/test_ownership.py`, and `scripts/tests/test_host_development.py`.
+
+Existing allowed paths cover remaining identity occurrences. Shared VS Code files
+and the host certification module contain no service identity. Generic TEST database,
+receipt/session labels and extension keys stay unchanged. The existing path policy
+accepts portable VS Code JSON and rejects any new `.env.*` example; retain `.env.example`
+as the only tracked env source. Strengthen parent artifact rejection for `.idea/`
+and `.host-sessions/`, and restrict `.vscode/` payloads to the three portable files.
+Add transformation/contract tests for these identity paths, exact host entrypoint,
+provider commands, ownership guard and portable IDE files; update the independent
+scaffold fixture/golden expectations and parent development contract accordingly.
+After certification/publication authorization, update the parent's canonical template
+SHA and approved pins in the later prompts. No parent or User changes occur here.

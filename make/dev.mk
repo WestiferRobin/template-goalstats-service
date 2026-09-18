@@ -1,3 +1,3 @@
-.PHONY: build run stop logs
-build run stop logs:
+.PHONY: build run stop logs providers providers-stop
+build run stop logs providers providers-stop:
 	@$(PYTHON) scripts/workflow.py $@

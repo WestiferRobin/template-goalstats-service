@@ -1,6 +1,7 @@
 """Flask application factory. Importing this module does not configure providers."""
 
 import logging
+import os
 from collections.abc import Mapping
 
 from flask import Flask, Response, send_from_directory
@@ -18,7 +19,7 @@ from routers.infra.readiness import create_readiness_blueprint
 from routers.item.action import create_actions_blueprint
 from routers.item.item import create_items_blueprint
 from schemas.infra.problem import ProblemSchema
-from settings.base import Settings
+from settings.base import ConfigurationError, Settings
 
 
 def create_app(config: Mapping[str, str] | None = None) -> Flask:
@@ -80,3 +81,25 @@ def create_app(config: Mapping[str, str] | None = None) -> Flask:
     api.register_blueprint(create_actions_blueprint())
     register_error_handlers(app)  # Override smorest's default error body contract.
     return app
+
+
+def development_main() -> None:
+    """Single-process LOCAL server; the IDE owns environment loading and debugging."""
+    if os.environ.get("APP_ENV", "").strip().lower() != "local":
+        raise ConfigurationError("Direct execution requires explicit APP_ENV=local.")
+    value = os.environ.get("HOST_APP_PORT", "5300")
+    if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 65535:
+        raise ConfigurationError("HOST_APP_PORT must be an integer from 1 to 65535.")
+    app = create_app()
+    app.run(
+        host="127.0.0.1",
+        port=int(value),
+        debug=False,
+        use_debugger=False,
+        use_reloader=False,
+        load_dotenv=False,
+    )
+
+
+if __name__ == "__main__":
+    development_main()

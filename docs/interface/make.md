@@ -52,3 +52,18 @@ migrated database and never applies migrations. `stop` retains developer DB volu
 Certification additionally induces failed runner/provider/migration/smoke operations
 and signals to verify cleanup; these are expected negative scenarios, not repeated
 successful suites. Commands propagate failures and do not stage, commit, or deploy.
+
+## IDE DEVELOPMENT commands
+
+| Command | Behavior |
+| --- | --- |
+| `providers ENV=local` | Start only healthy LOCAL PostgreSQL/Redis; verify bindings/auth; generate private host env; no app/migration |
+| `providers-stop ENV=local` | Stop only providers; retain PostgreSQL volume, containers and network; refuse active full LOCAL app |
+| `test-providers` | Foreground isolated disposable TEST session, dynamic loopback endpoints, private env + ownership manifest; Ctrl-C/SIGTERM cleanup |
+| `certify-host PYTHON=.venv/bin/python` | Python 3.12 host acceptance after installing requirements; disposable providers, CRUD/persistence, individual tests, ownership/signal checks; no IDE UI claim |
+
+`dev.mk` owns LOCAL provider targets, `test.mk` owns `test-providers`, and `ci.mk`
+owns `certify-host`; Python orchestration implements them. Provider targets reject
+`ENV=dev`. Normal `integration`, `test`, `migrate`, `smoke`, and `certify` retain their
+existing workflows. Host certification is additive and allocates its own ports.
+See the [README workflow](../../README.md#ide-development) for initial IDE setup.

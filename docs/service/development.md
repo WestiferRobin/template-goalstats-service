@@ -112,3 +112,54 @@ only `make setup` creates it. See [Make interface](../interface/make.md).
 smoke, and lifecycle/failure checks. It does not commit or publish. See
 [certification](../testing/certification.md). Templates evolve here first;
 parent workspace adoption is a separate reviewed change.
+
+## IDE DEVELOPMENT
+
+Use Python **3.12**, repository `.venv/bin/python`, and only `requirements.txt`.
+Run `python3.12 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt`,
+then `make setup`. `make providers ENV=local` starts PostgreSQL and Redis only,
+waits for health, verifies loopback bindings and PostgreSQL authentication, and
+creates private `.env.host.local`. It reuses the existing LOCAL project and DB volume.
+It neither migrates nor starts Flask. Next run `make build ENV=local` and
+`make migrate ENV=local`, then start the IDE configuration.
+
+| Setting | PyCharm | VS Code |
+| --- | --- | --- |
+| Interpreter | repo `.venv/bin/python` | workspace `.venv` |
+| Launch | Python script `src/main.py`, no parameters | `Flask: host LOCAL` (debugpy) |
+| Working directory | repository root | `${workspaceFolder}` |
+| App environment file | `.env.host.local` | launch-specific `.env.host.local` |
+| Import analysis | mark `src/` Sources Root | `python.analysis.extraPaths` |
+| Tests | pytest, root working directory, select `tests/unit` or `tests/integration` | Python Test Explorer, same directories |
+
+Direct execution requires explicit `APP_ENV=local`, constructs the factory once,
+and binds `127.0.0.1` on validated `HOST_APP_PORT` (default 5300). It disables
+reloader, built-in debugger and dotenv loading. IDE breakpoints can therefore target
+`main`, routers, services, repositories and caches in one process. `.idea/` stays
+ignored. Portable `.vscode` configuration contains no secrets or session paths.
+
+The LOCAL PostgreSQL and Redis host ports default to 55432 and 56379 on loopback.
+`.env.local` can override `LOCAL_POSTGRES_PORT`, `LOCAL_REDIS_PORT`, and
+`HOST_APP_PORT`. Existing two-key files remain valid. Occupied ports fail clearly.
+`make providers-stop ENV=local` stops only the two providers and retains data,
+containers and their network for reuse. Both provider commands refuse an active
+full LOCAL app: use `make stop ENV=local` before switching from full Docker LOCAL.
+Stop the host IDE process before stopping its providers. DEV/ordinary TEST do not
+publish provider ports.
+
+Build initially and after requirements or migration changes; migrate initially and
+for new revisions. Host source edits need a restart, not a Docker rebuild. Repeat
+pip installation when requirements change. Docker DEV still requires source rebuilds.
+`make migrate ENV=local` remains canonical; explicit host Alembic environment is
+optional. `.env.local` is Compose input only; the application never reads it.
+
+A differing `.env.host.local` is preserved and rejected, including changed ports,
+identity or credentials. Verify the existing volume's credentials and intended
+configuration, then explicitly remove the stale host file and rerun `make providers`.
+Changing `.env.local` does **not** rotate passwords in an existing PostgreSQL volume.
+Never delete a data volume to resolve an environment mismatch.
+
+For Docker-free tests, run `.venv/bin/python -m pytest tests/unit`, a unit folder,
+a file, or a `path::test_name` node. Do not attach the LOCAL app env file to pytest.
+Use `make integration` normally; `make test-providers` is optional for individual
+IDE integration tests and must remain running. See [test ownership](../testing/overview.md).

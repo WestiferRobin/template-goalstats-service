@@ -1,3 +1,3 @@
-.PHONY: check tooling certify
-check tooling certify:
+.PHONY: check tooling certify certify-host
+check tooling certify certify-host:
 	@$(PYTHON) scripts/workflow.py $@

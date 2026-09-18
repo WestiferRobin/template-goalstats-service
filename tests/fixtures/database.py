@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from flask import Flask
 from sqlalchemy import text
+from test_ownership import verify_test_providers
 
 from infra.resources.db import Database
 from settings.base import Settings, database_url
@@ -20,6 +21,10 @@ def postgres_config() -> dict[str, str]:
         pytest.skip("TEST_DATABASE_URL is not set; provision an isolated PostgreSQL test database.")
     if os.environ.get("TEST_DATABASE_DISPOSABLE") != "1":
         pytest.fail("TEST_DATABASE_DISPOSABLE=1 is required for provider tests.")
+    try:
+        verify_test_providers()
+    except RuntimeError as exc:
+        pytest.fail(str(exc), pytrace=False)
     try:
         url = database_url(value)
     except ValueError:

@@ -1,6 +1,7 @@
 """Small Docker workflow shared by Make, smoke, and certification (standard library only)."""
 
 import argparse
+import json
 import os
 import re
 import secrets
@@ -22,6 +23,10 @@ SETUP     make doctor                Read-only prerequisite and setup diagnosis
           make setup                 Verify tools; create missing private env files
           make build ENV=local|dev   Build the selected runtime
 RUNTIME   make run ENV=local|dev     Start and wait for exactly 200 Healthy
+IDE       make providers ENV=local  Healthy LOCAL providers + private host env; no app/migration
+          make providers-stop ENV=local Stop providers only; preserve data
+          make test-providers        Foreground owned disposable host TEST session
+          make certify-host PYTHON=.venv/bin/python  Automated host acceptance (no IDE UI)
           make stop ENV=local|dev    Remove selected containers/network; retain DB volume
           make logs ENV=local|dev    Show recent selected-stack logs
 DATABASE  make migrate ENV=local|dev Upgrade selected database to Alembic head
@@ -80,10 +85,8 @@ def setup(directory=ROOT):
     for tool in ("docker", "make"):
         if shutil.which(tool) is None:
             raise RuntimeError(f"Required tool missing: {tool}")
-    if sys.version_info < (3, 12):  # noqa: UP036 - host prerequisite check
-        raise RuntimeError(
-            "Python 3.12 or newer is required for host orchestration; image uses 3.12"
-        )
+    if sys.version_info[:2] != (3, 12):
+        raise RuntimeError("Python 3.12 is required for host orchestration and the application")
     run(["docker", "compose", "version"])
     run(["docker", "info"], capture=True)
     for env, port in (("local", 5100), ("dev", 5200)):
@@ -107,13 +110,27 @@ def read_settings(path):
         line = line.strip()
         if line and not line.startswith("#"):
             key, sep, value = line.partition("=")
-            if not sep or key not in {"POSTGRES_PASSWORD", "APP_PORT"}:
-                raise RuntimeError("Environment file permits only POSTGRES_PASSWORD and APP_PORT")
+            if (
+                not sep
+                or key
+                not in {
+                    "POSTGRES_PASSWORD",
+                    "APP_PORT",
+                    "HOST_APP_PORT",
+                    "LOCAL_POSTGRES_PORT",
+                    "LOCAL_REDIS_PORT",
+                }
+                or key in values
+            ):
+                raise RuntimeError("Environment file contains an unknown or duplicate key")
             values[key] = value
     if not re.fullmatch(r"[a-zA-Z0-9_-]{16,128}", values.get("POSTGRES_PASSWORD", "")):
         raise RuntimeError("POSTGRES_PASSWORD must be 16–128 URL-safe characters")
-    if not values.get("APP_PORT", "").isdigit() or not 1 <= int(values["APP_PORT"]) <= 65535:
-        raise RuntimeError("APP_PORT must be a valid port number")
+    for key in ("APP_PORT", "HOST_APP_PORT", "LOCAL_POSTGRES_PORT", "LOCAL_REDIS_PORT"):
+        if key == "APP_PORT" or key in values:
+            port = values.get(key, "")
+            if not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535:
+                raise RuntimeError(f"{key} must be a valid port number")
     return values
 
 
@@ -132,6 +149,9 @@ class Stack:
         # Ignore ambient application/Compose settings, and never source shell env files.
         self.process_env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
         self.process_env.update(self.settings)
+        # Optional LOCAL settings must never come from ambient shell variables.
+        for key, default in (("LOCAL_POSTGRES_PORT", "55432"), ("LOCAL_REDIS_PORT", "56379")):
+            self.process_env[key] = self.settings.get(key, default)
         self.args = [
             "docker",
             "compose",
@@ -153,18 +173,54 @@ class Stack:
     def command(self, *args, options=(), **kwargs):
         name = self.project + "-oneoff-" + secrets.token_hex(6)
         try:
-            return self.compose(
-                "run",
-                "--rm",
-                "--no-deps",
-                "-T",
-                "--name",
-                name,
-                *options,
-                self.service,
-                *args,
-                **kwargs,
-            )
+            with tempfile.TemporaryDirectory() as directory:
+                compose_options = ()
+                if self.env == "test":
+                    receipt = Path(directory) / "owned-test.json"
+                    receipt.write_text(
+                        json.dumps(
+                            {
+                                "hostname": name,
+                                "TEST_DATABASE_URL": "postgresql+psycopg://goalstats:"
+                                + self.settings["POSTGRES_PASSWORD"]
+                                + "@postgres:5432/goalstats_test_runtime",
+                                "TEST_REDIS_URL": "redis://redis:6379/0",
+                            }
+                        )
+                    )
+                    # The enclosing directory is 0700; the non-root runner reads the mount.
+                    receipt.chmod(0o444)
+                    override = Path(directory) / "runner.json"
+                    override.write_text(
+                        json.dumps(
+                            {
+                                "services": {
+                                    "runner": {
+                                        "hostname": name,
+                                        "volumes": [f"{receipt}:/run/owned-test.json:ro"],
+                                    }
+                                }
+                            }
+                        )
+                    )
+                    compose_options = ("-f", override)
+                return run(
+                    [
+                        *self.args,
+                        *compose_options,
+                        "run",
+                        "--rm",
+                        "--no-deps",
+                        "-T",
+                        "--name",
+                        name,
+                        *options,
+                        self.service,
+                        *args,
+                    ],
+                    env=self.process_env,
+                    **kwargs,
+                )
         finally:
             run(["docker", "rm", "-f", name], capture=True, check=False)
 
@@ -224,7 +280,12 @@ def fresh(env):
     return Stack(
         env,
         project="goalstats-template-py-cert-" + secrets.token_hex(6),
-        settings={"POSTGRES_PASSWORD": secrets.token_hex(24), "APP_PORT": str(port)},
+        settings={
+            "POSTGRES_PASSWORD": secrets.token_hex(24),
+            "APP_PORT": str(port),
+            "LOCAL_POSTGRES_PORT": "0",
+            "LOCAL_REDIS_PORT": "0",
+        },
     )
 
 
@@ -348,6 +409,16 @@ def main():
         setup()
     elif command == "doctor":
         doctor()
+    elif command in {"providers", "providers-stop"}:
+        if args.env != "local":
+            raise RuntimeError("Host providers require ENV=local")
+        from host_development import local_providers
+
+        local_providers(Stack("local"), stop=command == "providers-stop")
+    elif command == "test-providers":
+        from host_development import test_providers
+
+        test_providers()
     elif command in {"unit", "integration", "test", "coverage", "tooling"}:
         tests(command)
     elif command == "check":
@@ -360,6 +431,10 @@ def main():
         from validation.certify_workflows import certify
 
         certify()
+    elif command == "certify-host":
+        from validation.certify_host import certify_host
+
+        certify_host()
     elif command in {"build", "migrate", "run", "stop", "logs", "migration", "migration-check"}:
         if command == "migration" and (
             args.env != "local" or not os.environ.get("MESSAGE", "").strip()

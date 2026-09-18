@@ -1,6 +1,7 @@
 # Identity comes from the explicit Compose project selected by scripts/workflow.py.
 services:
   postgres:
+    ports: ["127.0.0.1:${LOCAL_POSTGRES_PORT:-55432}:5432"]
     image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     environment:
       POSTGRES_USER: goalstats
@@ -13,6 +14,7 @@ services:
       retries: 40
     volumes: ["postgres-data:/var/lib/postgresql/data"]
   redis:
+    ports: ["127.0.0.1:${LOCAL_REDIS_PORT:-56379}:6379"]
     image: redis:7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     tmpfs: ["/data"]

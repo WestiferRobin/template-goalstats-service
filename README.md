@@ -76,3 +76,41 @@ Application modules live directly under `src/`: `main.py`, `composition.py`,
 `enums/`, `exceptions/`, `settings/`, `models/`, `schemas/`, `infra/`, `services/`,
 and `routers/`. The factory is `main:create_app()`; no intermediate service package
 is present. See [template anchors and execution paths](docs/standard/template.md).
+
+## IDE DEVELOPMENT
+
+Host development is additive; all Docker commands above remain supported.
+
+```sh
+# once
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+make setup
+
+# providers (no app and no automatic migrations)
+make providers ENV=local
+make build ENV=local
+make migrate ENV=local
+
+# then: PyCharm → Run/Debug src/main.py; VS Code → Flask: host LOCAL
+# Docker-free unit tests
+.venv/bin/python -m pytest tests/unit
+# canonical complete integration suite
+make integration
+# optional foreground session for IDE integration debugging
+make test-providers
+# stop providers, preserving PostgreSQL data
+make providers-stop ENV=local
+```
+
+In PyCharm select `.venv/bin/python`, mark `src/` as Sources Root, and create a
+**Python script** configuration for `src/main.py`, working directory repository
+root, environment file `.env.host.local`, with no parameters. `.idea/` is local
+and ignored. In VS Code select the workspace `.venv` and **Flask: host LOCAL**.
+The host server binds `127.0.0.1:5300`; the IDE owns debugging. There is no reloader,
+built-in debugger, or implicit dotenv loading. The factory remains `main:create_app()`.
+
+Rebuild after dependency or migration changes, then migrate for new revisions.
+Host source edits need only an IDE restart; Docker DEV source edits require rebuild.
+Reinstall requirements after dependency changes. See [IDE setup and safety](docs/service/development.md#ide-development)
+and [owned integration debugging](docs/testing/overview.md#ide-integration-debugging).

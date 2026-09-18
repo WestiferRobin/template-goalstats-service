@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flask: host LOCAL",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/main.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env.host.local",
+      "env": {"FLASK_DEBUG": "0"},
+      "console": "integratedTerminal",
+      "subProcess": false,
+      "justMyCode": true
+    },
+    {
+      "name": "pytest: owned TEST session",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${input:testSessionEnv}",
+      "args": ["${input:testNode}", "-s"],
+      "console": "integratedTerminal",
+      "subProcess": false,
+      "justMyCode": true
+    }
+  ],
+  "inputs": [
+    {"id": "testSessionEnv", "type": "promptString", "description": "Private env file printed by the running make test-providers owner"},
+    {"id": "testNode", "type": "promptString", "description": "Integration test file or pytest node", "default": "tests/integration/infra/repositories/test_persistence.py"}
+  ]
+}

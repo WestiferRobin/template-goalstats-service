@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from redis import Redis
+from test_ownership import verify_test_providers
 
 
 @pytest.fixture(scope="session")
@@ -12,6 +13,10 @@ def redis_url():
         pytest.skip("TEST_REDIS_URL is not set; provision isolated Redis.")
     if os.environ.get("TEST_REDIS_DISPOSABLE") != "1":
         pytest.fail("TEST_REDIS_DISPOSABLE=1 is required.")
+    try:
+        verify_test_providers()
+    except RuntimeError as exc:
+        pytest.fail(str(exc), pytrace=False)
     from settings.base import redis_url as validate
 
     try:

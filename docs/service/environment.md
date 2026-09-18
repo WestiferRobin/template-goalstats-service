@@ -2,8 +2,8 @@
 
 The tracked `.env.example` documents configuration. `make setup` creates missing
 ignored `.env.local` and `.env.dev` files with mode 0600 and random passwords;
-it never overwrites existing configuration. Only `POSTGRES_PASSWORD` and `APP_PORT`
-are accepted in these Compose input files. They are parsed as data, never sourced.
+it never overwrites existing configuration. `POSTGRES_PASSWORD` and `APP_PORT`
+are required; optional host ports are documented below. Files are parsed as data, never sourced.
 Changing a file password does not rotate an existing PostgreSQL volume password.
 
 The application does not discover dotenv files. `Settings.load()` uses the process
@@ -20,7 +20,7 @@ environment, or only an explicitly supplied mapping. The runtime contract is:
 | `LOG_LEVEL` | Validated application logging level |
 
 LOCAL and DEV have distinct Compose projects, database volumes, cache namespaces,
-and loopback HTTP ports. Their provider ports are not published. TEST uses a new
+and loopback HTTP ports. LOCAL also publishes loopback provider ports; DEV does not. TEST uses a new
 project and ephemeral password for each run, tmpfs providers, explicit
 `TEST_DATABASE_URL`/`TEST_REDIS_URL`, and disposable flags. Supplied invalid test
 providers fail rather than falling back to developer infrastructure.
@@ -36,3 +36,28 @@ Service-owned DEV here means the built Gunicorn developer workflow, not a deploy
 platform environment. Never commit real env files, URLs, passwords, or tokens.
 
 See [development](development.md) for the exact identity table and recovery rules.
+
+## Host IDE configuration
+
+LOCAL Compose input additionally accepts optional validated `HOST_APP_PORT=5300`,
+`LOCAL_POSTGRES_PORT=55432`, and `LOCAL_REDIS_PORT=56379`. Each port must be an ASCII
+integer from 1 to 65535; host app/provider ports must be distinct. Optional
+values come from the validated file, not ambient shell overrides. Existing input
+without these keys remains valid. DEV and ordinary TEST providers stay unpublished.
+LOCAL provider publications are loopback only.
+
+`make providers ENV=local` generates ignored `.env.host.local` (0600) containing
+`APP_ENV`, host `DATABASE_URL`/`REDIS_URL`, `CACHE_KEY_PREFIX`, `CACHE_TTL_SECONDS`,
+`LOG_LEVEL`, `OPENAPI_ENABLED`, `HOST_APP_PORT`, and `FLASK_DEBUG=0`. Values derive
+from the validated LOCAL config and fixed Compose identity. IDE app launches explicitly
+load it; the application and pytest do not. Identical files are preserved; differing,
+nonprivate or symlink files are refused. After verifying a mismatch, explicitly remove
+the stale file and regenerate. Authentication is checked before generation; no workflow
+claims that editing config rotates existing volume credentials.
+
+Host integration debugging uses private `.host-sessions/<unique-project>/test.env`
+and a durable ownership manifest. Only the foreground `make test-providers` owner
+creates them. Never copy their generated values into `.env.local` or a tracked file.
+Closing the owner revokes the session and removes its files/resources. A crash or
+SIGKILL leaves evidence for exact-project recovery, but the expired lock cannot
+authorize further tests. Do not publish credentials from Docker inspect output.

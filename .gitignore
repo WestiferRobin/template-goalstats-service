@@ -8,6 +8,8 @@ __pycache__/
 coverage.xml
 htmlcov/
 .venv/
+.idea/
+.host-sessions/
 venv/
 .env
 .env.*
