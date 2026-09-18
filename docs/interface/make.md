@@ -67,3 +67,7 @@ owns `certify-host`; Python orchestration implements them. Provider targets reje
 `ENV=dev`. Normal `integration`, `test`, `migrate`, `smoke`, and `certify` retain their
 existing workflows. Host certification is additive and allocates its own ports.
 See the [README workflow](../../README.md#ide-development) for initial IDE setup.
+
+After `providers ENV=local` and `migrate ENV=local`, run/debug `src/main.py` directly:
+it loads the prepared host file without IDE environment configuration. No `make ide`
+command is needed. Rebuild an existing image when dependencies or migrations change.

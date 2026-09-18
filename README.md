@@ -89,7 +89,6 @@ make setup
 
 # providers (no app and no automatic migrations)
 make providers ENV=local
-make build ENV=local
 make migrate ENV=local
 
 # then: PyCharm → Run/Debug src/main.py; VS Code → Flask: host LOCAL
@@ -103,12 +102,14 @@ make test-providers
 make providers-stop ENV=local
 ```
 
-In PyCharm select `.venv/bin/python`, mark `src/` as Sources Root, and create a
-**Python script** configuration for `src/main.py`, working directory repository
-root, environment file `.env.host.local`, with no parameters. `.idea/` is local
-and ignored. In VS Code select the workspace `.venv` and **Flask: host LOCAL**.
-The host server binds `127.0.0.1:5300`; the IDE owns debugging. There is no reloader,
-built-in debugger, or implicit dotenv loading. The factory remains `main:create_app()`.
+In PyCharm select `.venv/bin/python`, open `src/main.py`, and click Run/Debug.
+No custom environment variables, env-file profile, or Flask configuration is needed.
+Marking `src/` as Sources Root is optional editor assistance, not a runtime requirement.
+In VS Code select the workspace `.venv` and **Flask: host LOCAL** (F5).
+Both IDEs and `python src/main.py` use the same direct-only loader for the repository's
+private `.env.host.local`, independently of working directory. The host server binds
+`127.0.0.1:5300`; the IDE owns debugging. No reloader or built-in debugger is enabled.
+The imported factory remains `main:create_app()` and never loads host configuration.
 
 Rebuild after dependency or migration changes, then migrate for new revisions.
 Host source edits need only an IDE restart; Docker DEV source edits require rebuild.

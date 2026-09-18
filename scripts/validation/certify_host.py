@@ -6,12 +6,14 @@ Actual PyCharm/VS Code UI breakpoint acceptance remains a separate manual check.
 
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 from pathlib import Path
 
 from host_development import local_environment, local_providers
@@ -44,6 +46,7 @@ def clean_env():
         if not k.startswith(
             ("TEST_", "DATABASE_", "REDIS_", "APP_", "FLASK_", "CACHE_", "COMPOSE_", "HOST_")
         )
+        and k not in {"LOG_LEVEL", "OPENAPI_ENABLED", "PYTHONPATH"}
     }
 
 
@@ -118,6 +121,25 @@ def certify_session(signum):
 
 
 def certify_host():
+    # The real repository's private host file is never overwritten for certification.
+    # Exercise the actual fixed repo-relative path in an exact disposable source copy.
+    with tempfile.TemporaryDirectory(prefix="host-entrypoint-") as directory:
+        root = Path(directory)
+        names = run(["git", "ls-files", "-co", "--exclude-standard", "-z"], capture=True).stdout
+        for name in set(filter(None, names.split("\0"))):
+            source = ROOT / name
+            if source.is_file():
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+        (root / ".venv").symlink_to(ROOT / ".venv", target_is_directory=True)
+        run(
+            [sys.executable, str(root / "scripts/validation/certify_host.py")],
+            env={**clean_env(), "PYTHONPATH": str(root / "scripts")},
+        )
+
+
+def certify_isolated_host():
     assert sys.version_info[:2] == (3, 12), "Host certification requires Python 3.12"
     assert Path(sys.prefix).resolve() == (ROOT / ".venv").resolve(), "Use repository .venv"
     run([sys.executable, "-m", "pip", "check"])
@@ -144,7 +166,12 @@ def certify_host():
     child = None
     try:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / ".env.host.local"
+            path = ROOT / ".env.host.local"
+            missing = run(
+                [sys.executable, "src/main.py"], env=clean_env(), capture=True, check=False
+            )
+            assert missing.returncode and "LOCAL host configuration is missing" in missing.stderr
+            assert "Traceback" not in missing.stderr
             local_providers(stack, host_path=path)
             before = path.read_bytes()
             local_providers(stack, host_path=path)
@@ -188,6 +215,47 @@ def certify_host():
                 assert cache.ping()
             finally:
                 cache.close()
+            for mode in ("dev", "test", "", "unknown"):
+                refused = run(
+                    [sys.executable, "src/main.py"],
+                    env={**clean_env(), "APP_ENV": mode},
+                    capture=True,
+                    check=False,
+                )
+                assert refused.returncode and "conflicting APP_ENV" in refused.stderr
+                assert "Traceback" not in refused.stderr
+            url = "http://127.0.0.1:" + env["HOST_APP_PORT"]
+            with socket.socket() as occupied:
+                occupied.bind(("127.0.0.1", int(env["HOST_APP_PORT"])))
+                occupied.listen()
+                refused = run(
+                    [sys.executable, "src/main.py"],
+                    env=clean_env(),
+                    capture=True,
+                    check=False,
+                )
+                assert refused.returncode and "choose HOST_APP_PORT" in refused.stderr
+            # Reachable, unmigrated PostgreSQL must not prevent direct startup.
+            with (Path(directory) / "unmigrated.log").open("w") as output:
+                child = subprocess.Popen(
+                    [sys.executable, "src/main.py"],
+                    cwd=ROOT,
+                    env=clean_env(),
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                )
+                deadline = time.monotonic() + 30
+                while True:
+                    try:
+                        assert request(url, "/health")[0] == "Healthy"
+                        break
+                    except (urllib.error.URLError, ConnectionError):
+                        assert child.poll() is None and time.monotonic() < deadline
+                        time.sleep(0.1)
+                assert request(url, "/ready", expected=503)[0] == "Unhealthy"
+                stop_child(child)
+                child = None
+            assert "make migrate ENV=local" in (Path(directory) / "unmigrated.log").read_text()
             stack.compose("build", "app")
             stack.migrate()
             stack.command("alembic", "check")
@@ -197,7 +265,7 @@ def certify_host():
                 child = subprocess.Popen(
                     [sys.executable, "src/main.py"],
                     cwd=ROOT,
-                    env=env,
+                    env=clean_env(),
                     stdout=output,
                     stderr=subprocess.STDOUT,
                 )
@@ -215,15 +283,31 @@ def certify_host():
                 stop_child(child)
                 child = None
                 local_providers(stack, stop=True)
-                local_providers(stack, host_path=path)
-                child = subprocess.Popen(
+                refused = run(
                     [sys.executable, "src/main.py"],
-                    cwd=ROOT,
-                    env=env,
+                    env=clean_env(),
+                    capture=True,
+                    check=False,
+                )
+                assert refused.returncode and "LOCAL PostgreSQL is unavailable" in refused.stderr
+                assert "Traceback" not in refused.stderr and password not in refused.stderr
+                local_providers(stack, host_path=path)
+                stack.compose("stop", "redis")
+                child = subprocess.Popen(
+                    [sys.executable, "main.py"],
+                    cwd=ROOT / "src",
+                    env=clean_env(),
                     stdout=output,
                     stderr=subprocess.STDOUT,
                 )
-                wait_ready(url)
+                deadline = time.monotonic() + 30
+                while True:
+                    try:
+                        assert request(url, "/ready")[0] == "Degraded"
+                        break
+                    except (urllib.error.URLError, ConnectionError):
+                        assert child.poll() is None and time.monotonic() < deadline
+                        time.sleep(0.1)
                 assert request(url, item_path)[0] == updated
                 request(url, item_path, "DELETE", expected=204)
                 request(url, item_path, expected=404)
@@ -258,4 +342,4 @@ def certify_host():
 
 if __name__ == "__main__":
     install_signals()
-    certify_host()
+    certify_isolated_host()

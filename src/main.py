@@ -1,7 +1,7 @@
 """Flask application factory. Importing this module does not configure providers."""
 
 import logging
-import os
+import sys
 from collections.abc import Mapping
 
 from flask import Flask, Response, send_from_directory
@@ -84,16 +84,17 @@ def create_app(config: Mapping[str, str] | None = None) -> Flask:
 
 
 def development_main() -> None:
-    """Single-process LOCAL server; the IDE owns environment loading and debugging."""
-    if os.environ.get("APP_ENV", "").strip().lower() != "local":
-        raise ConfigurationError("Direct execution requires explicit APP_ENV=local.")
-    value = os.environ.get("HOST_APP_PORT", "5300")
-    if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 65535:
-        raise ConfigurationError("HOST_APP_PORT must be an integer from 1 to 65535.")
-    app = create_app()
+    """Direct script execution owns LOCAL configuration; the IDE owns debugging."""
+    from settings.host import check_app_port, diagnose_providers, load_host_config
+
+    config = load_host_config()
+    port = int(config["HOST_APP_PORT"])
+    check_app_port(port)
+    app = create_app(config)
+    diagnose_providers(app)
     app.run(
         host="127.0.0.1",
-        port=int(value),
+        port=port,
         debug=False,
         use_debugger=False,
         use_reloader=False,
@@ -102,4 +103,7 @@ def development_main() -> None:
 
 
 if __name__ == "__main__":
-    development_main()
+    try:
+        development_main()
+    except ConfigurationError as exc:
+        sys.exit(str(exc))

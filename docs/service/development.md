@@ -120,21 +120,22 @@ Run `python3.12 -m venv .venv`, `.venv/bin/python -m pip install -r requirements
 then `make setup`. `make providers ENV=local` starts PostgreSQL and Redis only,
 waits for health, verifies loopback bindings and PostgreSQL authentication, and
 creates private `.env.host.local`. It reuses the existing LOCAL project and DB volume.
-It neither migrates nor starts Flask. Next run `make build ENV=local` and
-`make migrate ENV=local`, then start the IDE configuration.
+It neither migrates nor starts Flask. Next run `make migrate ENV=local`, then
+Run/Debug `src/main.py`. Rebuild an existing image after dependency/migration changes.
 
 | Setting | PyCharm | VS Code |
 | --- | --- | --- |
 | Interpreter | repo `.venv/bin/python` | workspace `.venv` |
 | Launch | Python script `src/main.py`, no parameters | `Flask: host LOCAL` (debugpy) |
 | Working directory | repository root | `${workspaceFolder}` |
-| App environment file | `.env.host.local` | launch-specific `.env.host.local` |
-| Import analysis | mark `src/` Sources Root | `python.analysis.extraPaths` |
+| App environment | loaded by direct entrypoint; no IDE profile | same direct entrypoint; no app envFile |
+| Import analysis | optionally mark `src/` Sources Root | `python.analysis.extraPaths` |
 | Tests | pytest, root working directory, select `tests/unit` or `tests/integration` | Python Test Explorer, same directories |
 
-Direct execution requires explicit `APP_ENV=local`, constructs the factory once,
-and binds `127.0.0.1` on validated `HOST_APP_PORT` (default 5300). It disables
-reloader, built-in debugger and dotenv loading. IDE breakpoints can therefore target
+Direct execution selects LOCAL automatically, reads the repository `.env.host.local`,
+and constructs the factory once. Explicit DEV/TEST/unknown/blank modes are refused. It
+binds `127.0.0.1` on validated `HOST_APP_PORT` (default 5300). It disables
+reloader, built-in debugger and Flask generic dotenv loading. IDE breakpoints can therefore target
 `main`, routers, services, repositories and caches in one process. `.idea/` stays
 ignored. Portable `.vscode` configuration contains no secrets or session paths.
 
@@ -163,3 +164,19 @@ For Docker-free tests, run `.venv/bin/python -m pytest tests/unit`, a unit folde
 a file, or a `path::test_name` node. Do not attach the LOCAL app env file to pytest.
 Use `make integration` normally; `make test-providers` is optional for individual
 IDE integration tests and must remain running. See [test ownership](../testing/overview.md).
+
+### Direct startup diagnostics
+
+The direct-only `settings/host.py` helper reads one private, user-owned regular file,
+never follows symlinks, evaluates shell text, discovers other dotenv files, or mutates
+`os.environ`. Supported process overrides win over host-file values and safe LOCAL
+defaults. Invalid overrides and non-loopback provider URLs fail; FLASK_DEBUG cannot
+enable Flask debugging. Missing configuration directs you to `make providers ENV=local`.
+PostgreSQL unavailability refuses startup with a credential-free message. Reachable
+but unmigrated databases allow startup with migration guidance and Unhealthy readiness.
+Redis unavailability retains database fallback and Degraded readiness. Startup never
+migrates or starts Docker. An occupied app port produces an actionable error.
+
+The file path is relative to the repository, not cwd: plain Python script Run works
+from the repository root or `src/`. Imported factory, unit/integration tests, Alembic,
+and Docker never invoke this loader. Do not attach LOCAL host config to pytest.

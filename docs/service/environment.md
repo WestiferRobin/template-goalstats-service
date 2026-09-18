@@ -6,7 +6,7 @@ it never overwrites existing configuration. `POSTGRES_PASSWORD` and `APP_PORT`
 are required; optional host ports are documented below. Files are parsed as data, never sourced.
 Changing a file password does not rotate an existing PostgreSQL volume password.
 
-The application does not discover dotenv files. `Settings.load()` uses the process
+The imported factory does not discover dotenv files. `Settings.load()` uses the process
 environment, or only an explicitly supplied mapping. The runtime contract is:
 
 | Variable | Meaning |
@@ -49,8 +49,8 @@ LOCAL provider publications are loopback only.
 `make providers ENV=local` generates ignored `.env.host.local` (0600) containing
 `APP_ENV`, host `DATABASE_URL`/`REDIS_URL`, `CACHE_KEY_PREFIX`, `CACHE_TTL_SECONDS`,
 `LOG_LEVEL`, `OPENAPI_ENABLED`, `HOST_APP_PORT`, and `FLASK_DEBUG=0`. Values derive
-from the validated LOCAL config and fixed Compose identity. IDE app launches explicitly
-load it; the application and pytest do not. Identical files are preserved; differing,
+from the validated LOCAL config and fixed Compose identity. Direct `src/main.py`
+loads this exact file for both IDEs; imported factories and pytest do not. Identical files are preserved; differing,
 nonprivate or symlink files are refused. After verifying a mismatch, explicitly remove
 the stale file and regenerate. Authentication is checked before generation; no workflow
 claims that editing config rotates existing volume credentials.
@@ -61,3 +61,11 @@ creates them. Never copy their generated values into `.env.local` or a tracked f
 Closing the owner revokes the session and removes its files/resources. A crash or
 SIGKILL leaves evidence for exact-project recovery, but the expired lock cannot
 authorize further tests. Do not publish credentials from Docker inspect output.
+
+Direct execution merges supported process overrides, this host file, then LOCAL defaults.
+Missing process APP_ENV means LOCAL; explicit blank/DEV/TEST/unknown modes fail, and the
+host file must declare LOCAL. Database configuration is required; Redis remains optional.
+Existing settings own cache identity, TTL 300 and INFO defaults; direct OpenAPI defaults
+to enabled and HOST_APP_PORT to 5300. Both provider URLs must use loopback. Invalid
+values fail rather than falling back. FLASK_DEBUG is effectively disabled regardless
+of ambient values. Configuration loading never changes the process environment.

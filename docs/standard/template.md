@@ -99,3 +99,9 @@ provider commands, ownership guard and portable IDE files; update the independen
 scaffold fixture/golden expectations and parent development contract accordingly.
 After certification/publication authorization, update the parent's canonical template
 SHA and approved pins in the later prompts. No parent or User changes occur here.
+
+Direct `src/main.py` means LOCAL host development. The service-neutral
+`src/settings/host.py` loader belongs only to that entrypoint; the factory, Docker,
+Alembic and tests remain independent. Portable VS Code app launch must not inject
+an env file; PyCharm Python script Run needs no environment profile. Scaffold guards
+must validate this shared loader and preserve its source bytes without identity rewrites.
