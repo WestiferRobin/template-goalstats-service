@@ -1,4 +1,3 @@
-import os
 from collections.abc import Iterator
 from pathlib import Path
 from uuid import uuid4
@@ -8,7 +7,7 @@ from alembic import command
 from alembic.config import Config
 from flask import Flask
 from sqlalchemy import text
-from test_ownership import verify_test_providers
+from test_ownership import owned_test_config
 
 from infra.resources.db import Database
 from settings.base import Settings, database_url
@@ -16,22 +15,31 @@ from settings.base import Settings, database_url
 
 @pytest.fixture(scope="session")
 def postgres_config() -> dict[str, str]:
-    value = os.environ.get("TEST_DATABASE_URL")
-    if not value:
-        pytest.skip("TEST_DATABASE_URL is not set; provision an isolated PostgreSQL test database.")
-    if os.environ.get("TEST_DATABASE_DISPOSABLE") != "1":
-        pytest.fail("TEST_DATABASE_DISPOSABLE=1 is required for provider tests.")
     try:
-        verify_test_providers()
+        owned = owned_test_config()
     except RuntimeError as exc:
         pytest.fail(str(exc), pytrace=False)
+    value = owned.get("TEST_DATABASE_URL")
+    if not value or owned.get("TEST_DATABASE_DISPOSABLE") != "1":
+        pytest.fail("Verified disposable TEST configuration is required.", pytrace=False)
     try:
         url = database_url(value)
     except ValueError:
         pytest.fail("TEST_DATABASE_URL is invalid; its value is intentionally omitted.")
     if not url.database or not url.database.startswith("goalstats_test_"):
         pytest.fail("Provider tests require a dedicated goalstats_test_* database.")
-    config = {"APP_ENV": "test", "DATABASE_URL": value, "OPENAPI_ENABLED": "true"}
+    config = {
+        "APP_ENV": "test",
+        "DATABASE_URL": value,
+        **{
+            key: owned.get(key, default)
+            for key, default in {
+                "OPENAPI_ENABLED": "true",
+                "LOG_LEVEL": "INFO",
+                "CACHE_TTL_SECONDS": "300",
+            }.items()
+        },
+    }
     db = Database(Settings.load(config))
     try:
         with db.engine.connect() as connection:

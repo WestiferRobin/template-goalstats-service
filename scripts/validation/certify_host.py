@@ -16,7 +16,9 @@ import time
 import urllib.error
 from pathlib import Path
 
-from host_development import local_environment, local_providers
+from environment_config import schema
+from environment_setup import text as env_text
+from host_development import local_environment, local_providers, private_write
 from http_client import request
 from test_ownership import verify_host_session
 from workflow import ROOT, assert_absent, fresh, install_signals, inventory, run, wait_ready
@@ -52,7 +54,7 @@ def clean_env():
 
 def certify_session(signum):
     sessions = ROOT / ".host-sessions"
-    before = set(sessions.glob("*/test.env"))
+    before = set(sessions.glob("*/manifest.json"))
     with tempfile.TemporaryDirectory() as directory:
         log_path = Path(directory) / "owner.log"
         with log_path.open("w") as output:
@@ -70,12 +72,15 @@ def certify_session(signum):
                     if child.poll() is not None or time.monotonic() > deadline:
                         raise AssertionError("TEST owner failed: " + log_path.read_text())
                     time.sleep(0.2)
-                paths = set(sessions.glob("*/test.env")) - before
+                paths = set(sessions.glob("*/manifest.json")) - before
                 assert len(paths) == 1
                 path = paths.pop()
                 env = {
                     **clean_env(),
-                    **dict(line.split("=", 1) for line in path.read_text().splitlines()),
+                    **json.loads(path.read_text())["urls"],
+                    "TEST_SESSION_MANIFEST": str(path),
+                    "TEST_DATABASE_DISPOSABLE": "1",
+                    "TEST_REDIS_DISPOSABLE": "1",
                 }
                 manifest = verify_host_session(env)
                 project = manifest["project"]
@@ -92,7 +97,7 @@ def certify_session(signum):
                             "tests/integration/migrations/test_schema.py",
                             "tests/integration/infra/caches/test_redis.py",
                         ],
-                        env=env,
+                        env=clean_env(),
                     )
                 for key in ("TEST_DATABASE_URL", "TEST_REDIS_URL"):
                     bad = {**env, key: env[key] + "wrong"}
@@ -159,6 +164,9 @@ def certify_isolated_host():
         json.loads(data)
         assert str(ROOT) not in data and ".host-sessions/" not in data
     baseline = inventory()
+    from validation.certify_environment import certify_environment
+
+    certify_environment()
     stack = fresh("local")
     for key in ("LOCAL_POSTGRES_PORT", "LOCAL_REDIS_PORT", "HOST_APP_PORT"):
         stack.settings[key] = free_port()
@@ -166,15 +174,27 @@ def certify_isolated_host():
     child = None
     try:
         with tempfile.TemporaryDirectory() as directory:
-            path = ROOT / ".env.host.local"
+            path = ROOT / ".env.local"
             missing = run(
                 [sys.executable, "src/main.py"], env=clean_env(), capture=True, check=False
             )
-            assert missing.returncode and "LOCAL host configuration is missing" in missing.stderr
+            assert missing.returncode and "LOCAL configuration is missing" in missing.stderr
             assert "Traceback" not in missing.stderr
-            local_providers(stack, host_path=path)
+            machine_values = schema.machine(
+                {
+                    "POSTGRES_PASSWORD": stack.settings["POSTGRES_PASSWORD"],
+                    "DEV_POSTGRES_PASSWORD": "unused_certificate_password",
+                    "LOCAL_APP_PORT": stack.settings["APP_PORT"],
+                    **{
+                        k: stack.settings[k]
+                        for k in ("HOST_APP_PORT", "LOCAL_POSTGRES_PORT", "LOCAL_REDIS_PORT")
+                    },
+                }
+            )
+            private_write(path, env_text(machine_values))
+            local_providers(stack)
             before = path.read_bytes()
-            local_providers(stack, host_path=path)
+            local_providers(stack)
             assert path.read_bytes() == before and path.stat().st_mode & 0o777 == 0o600
             assert not stack.compose("ps", "-q", "app", capture=True).stdout.strip()
             # Recreating a container with changed config must not pretend to rotate
@@ -184,12 +204,10 @@ def certify_isolated_host():
             stack.compose("rm", "-f", "postgres")
             stack.settings["POSTGRES_PASSWORD"] = "deliberately_wrong_password"
             stack.process_env["POSTGRES_PASSWORD"] = "deliberately_wrong_password"
-            wrong_path = Path(directory) / ".env.host.wrong"
             try:
-                local_providers(stack, host_path=wrong_path)
+                local_providers(stack)
             except RuntimeError as exc:
                 assert "authentication failed" in str(exc)
-                assert not wrong_path.exists()
             else:
                 raise AssertionError(
                     "Changed config falsely accepted as rotated volume credentials"
@@ -199,7 +217,7 @@ def certify_isolated_host():
                 stack.process_env["POSTGRES_PASSWORD"] = password
                 stack.compose("stop", "postgres")
                 stack.compose("rm", "-f", "postgres")
-            local_providers(stack, host_path=path)
+            local_providers(stack)
             env = {**clean_env(), **local_environment(stack)}
             from redis import Redis
             from sqlalchemy import create_engine, text
@@ -291,7 +309,7 @@ def certify_isolated_host():
                 )
                 assert refused.returncode and "LOCAL PostgreSQL is unavailable" in refused.stderr
                 assert "Traceback" not in refused.stderr and password not in refused.stderr
-                local_providers(stack, host_path=path)
+                local_providers(stack)
                 stack.compose("stop", "redis")
                 child = subprocess.Popen(
                     [sys.executable, "main.py"],
@@ -318,7 +336,7 @@ def certify_isolated_host():
             stack.start()
             for stop in (False, True):
                 try:
-                    local_providers(stack, stop=stop, host_path=path)
+                    local_providers(stack, stop=stop)
                 except RuntimeError as exc:
                     assert "active" in str(exc)
                 else:

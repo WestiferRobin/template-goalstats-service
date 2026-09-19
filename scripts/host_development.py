@@ -7,6 +7,7 @@ import secrets
 import socket
 import time
 
+from environment_config import schema
 from test_ownership import SESSION_LABEL, inspect_container, verify_host_session
 from workflow import ROOT, Stack, assert_absent
 
@@ -46,39 +47,7 @@ def refuse_active_app(stack):
 
 
 def local_environment(stack):
-    settings = stack.settings
-    return {
-        "APP_ENV": "local",
-        "DATABASE_URL": (
-            "postgresql+psycopg://goalstats:"
-            + settings["POSTGRES_PASSWORD"]
-            + "@127.0.0.1:"
-            + settings.get("LOCAL_POSTGRES_PORT", "55432")
-            + "/goalstats_template_py_local"
-        ),
-        "REDIS_URL": "redis://127.0.0.1:" + settings.get("LOCAL_REDIS_PORT", "56379") + "/0",
-        "CACHE_KEY_PREFIX": "goalstats-template-py:local:v1",
-        "CACHE_TTL_SECONDS": "300",
-        "LOG_LEVEL": "INFO",
-        "OPENAPI_ENABLED": "true",
-        "HOST_APP_PORT": settings.get("HOST_APP_PORT", "5300"),
-        "FLASK_DEBUG": "0",
-    }
-
-
-def check_host_file(path, content):
-    if path.is_symlink():
-        raise RuntimeError("Refusing symlink host environment")
-    if path.exists():
-        info = path.stat()
-        if info.st_uid != os.getuid() or info.st_mode & 0o077:
-            raise RuntimeError("Host environment must be owned by this user with mode 0600")
-        if path.read_text() != content:
-            raise RuntimeError(
-                "Stale or edited .env.host.local preserved. Verify provider ports/identity and "
-                "existing database credentials, then explicitly remove it and rerun providers. "
-                "Changing configuration does NOT rotate PostgreSQL volume credentials."
-            )
+    return schema.application({**schema.PORT_DEFAULTS, **stack.settings}, "local", host=True)
 
 
 def check_local_bindings(stack, *, before=False):
@@ -120,7 +89,7 @@ def check_local_bindings(stack, *, before=False):
             raise RuntimeError("LOCAL provider binding verification failed")
 
 
-def local_providers(stack, *, stop=False, host_path=None):
+def local_providers(stack, *, stop=False):
     if stack.env != "local":
         raise RuntimeError("Host providers require LOCAL")
     refuse_active_app(stack)
@@ -137,9 +106,6 @@ def local_providers(stack, *, stop=False, host_path=None):
     ]
     if len(set(map(int, ports))) != len(ports):
         raise RuntimeError("Host app and provider ports must be distinct")
-    path = host_path or ROOT / ".env.host.local"
-    content = env_text(local_environment(stack))
-    check_host_file(path, content)
     check_local_bindings(stack, before=True)
     stack.providers()
     check_local_bindings(stack)
@@ -167,12 +133,9 @@ def local_providers(stack, *, stop=False, host_path=None):
     if result.returncode or result.stdout.strip() != "1":
         raise RuntimeError(
             "LOCAL database authentication failed. Configuration does not rotate existing "
-            "volume credentials; restore the correct password before generating host env."
+            "volume credentials; restore the correct password before starting providers."
         )
-    check_host_file(path, content)
-    if not path.exists():
-        private_write(path, content)
-    print("LOCAL providers healthy; private host environment ready. No app or migration started.")
+    print("LOCAL providers healthy; canonical configuration ready. No app or migration started.")
     print(
         "Existing PostgreSQL volume credentials are unchanged; readiness verifies authentication."
     )
@@ -226,7 +189,6 @@ def test_providers():
         )
         stack.args += ["-f", override]
         manifest_path = directory / "manifest.json"
-        env_path = directory / "test.env"
         # Starting evidence survives a provider failure or an uncatchable owner crash.
         evidence = directory / "ownership.json"
         private_write(
@@ -262,6 +224,7 @@ def test_providers():
                         "token": token,
                         "pid": os.getpid(),
                         "urls": urls,
+                        "policy": schema.test_policy(ROOT),
                         "containers": {s: c["Id"] for s, c in containers.items()},
                     }
                 ),
@@ -276,9 +239,11 @@ def test_providers():
                 "TEST_SESSION_MANIFEST": str(manifest_path),
                 "FLASK_DEBUG": "0",
             }
-            private_write(env_path, env_text(env))
             verify_host_session(env)
-            print(f"Owned TEST session ready. Explicit IDE env file: {env_path}", flush=True)
+            print(
+                "Owned TEST session ready. Run an integration test here; no env profile needed.",
+                flush=True,
+            )
             print(
                 "Keep this owner running. Ctrl-C/SIGTERM removes only this disposable session.",
                 flush=True,
@@ -289,8 +254,6 @@ def test_providers():
             # Revoke the lease before cleanup; retain evidence on cleanup failure.
             if manifest_path.exists():
                 manifest_path.unlink()
-            if env_path.exists():
-                env_path.unlink()
             stack.stop(volumes=True)
             assert_absent(project)
             for path in directory.iterdir():

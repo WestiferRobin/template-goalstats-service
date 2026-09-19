@@ -35,8 +35,9 @@ services:
       DATABASE_URL: postgresql+psycopg://goalstats:${POSTGRES_PASSWORD}@postgres:5432/goalstats_template_py_local
       REDIS_URL: redis://redis:6379/0
       CACHE_KEY_PREFIX: goalstats-template-py:local:v1
-      OPENAPI_ENABLED: "true"
-      LOG_LEVEL: INFO
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
     ports: ["127.0.0.1:${APP_PORT:-5100}:8000"]
     command: ["flask", "--app", "main:create_app()", "run", "--host=0.0.0.0", "--port=8000", "--reload", "--no-debugger"]
     volumes:

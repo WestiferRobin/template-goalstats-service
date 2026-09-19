@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from environment_config import schema
+
 ROOT = Path(__file__).resolve().parents[1]
 SESSION_LABEL = "dev.host-test-session"
 
@@ -120,8 +122,8 @@ def verify_host_session(environ=None):
         return manifest
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         raise RuntimeError(
-            "Unverified TEST providers: start make test-providers and explicitly load its "
-            "current private env file; stale or mismatched sessions are refused."
+            "Unverified TEST providers: start make test-providers and use its "
+            "owned session; stale or mismatched sessions are refused."
         ) from None
 
 
@@ -145,3 +147,31 @@ def verify_test_providers(environ=None):
         except (OSError, ValueError, KeyError, TypeError):
             raise RuntimeError("Invalid owned Docker TEST runner receipt") from None
     verify_host_session(env)
+
+
+def owned_test_config(environ=None):
+    """Resolve only at fixture execution; manifests never authorize unchecked endpoints."""
+    env = dict(os.environ if environ is None else environ)
+    if any(key in env for key in ("TEST_DATABASE_URL", "TEST_REDIS_URL", "TEST_SESSION_MANIFEST")):
+        verify_test_providers(env)
+        return env
+    paths = list((ROOT / ".host-sessions").glob("*/manifest.json"))
+    if len(paths) != 1:
+        raise RuntimeError(
+            "Start make test-providers in this repository; exactly one active session is required."
+        )
+    path = paths[0]
+    try:
+        data = json.loads(private_file(path))
+        values = {**data["urls"], "TEST_SESSION_MANIFEST": str(path)}
+        manifest = verify_host_session(values)
+        preferences = schema.policy(manifest.get("policy", {}))
+    except (OSError, ValueError, KeyError, TypeError):
+        raise RuntimeError("Invalid owned TEST session; restart make test-providers.") from None
+    return {
+        **preferences,
+        **values,
+        "APP_ENV": "test",
+        "TEST_DATABASE_DISPOSABLE": "1",
+        "TEST_REDIS_DISPOSABLE": "1",
+    }

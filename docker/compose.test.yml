@@ -33,8 +33,9 @@ services:
       DATABASE_URL: postgresql+psycopg://goalstats:${POSTGRES_PASSWORD}@postgres:5432/goalstats_test_runtime
       REDIS_URL: redis://redis:6379/0
       CACHE_KEY_PREFIX: goalstats-template-py:test:v1
-      OPENAPI_ENABLED: "true"
-      LOG_LEVEL: INFO
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
       TEST_DATABASE_URL: postgresql+psycopg://goalstats:${POSTGRES_PASSWORD}@postgres:5432/goalstats_test_runtime
       TEST_DATABASE_DISPOSABLE: "1"
       TEST_REDIS_URL: redis://redis:6379/0

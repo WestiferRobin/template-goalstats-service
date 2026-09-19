@@ -45,15 +45,14 @@ See [smoke](smoke.md), [certification](certification.md), and
 Both IDEs discover unit and integration tests from the repository root. Collection
 never provisions providers; smoke still requires explicit `--smoke`. Unit tests
 need no Docker or provider URLs. Run a folder, file, or single node with the repo
-`.venv/bin/python -m pytest`; never apply `.env.host.local` globally to testing.
+`.venv/bin/python -m pytest`; never apply `.env.local` globally to testing.
 
 Run `make test-providers` in a terminal and leave it in the foreground. It starts
 fresh disposable TEST PostgreSQL/Redis with generated credentials and dynamic
-loopback ports, then prints only the path to a private `test.env`. In PyCharm make
-a pytest configuration for the desired integration file/node, root working directory,
-repo `.venv`, and this env file. In VS Code choose `pytest: owned TEST session` and
-enter that path and test node when prompted. This launch is separate from Test Explorer's
-ordinary discovery/unit environment. Use only one pytest process per session.
+loopback ports. Private JSON manifests are internal ownership state. Run the desired
+integration file/node in PyCharm, or choose `pytest: owned TEST session` in VS Code.
+No env profile is needed. Exactly one session must be present; ambiguity fails closed.
+Use only one pytest process per session.
 The database fixture migrates the disposable database on first use.
 
 Before connecting, fixtures verify the private manifest, active owner lock/PID,

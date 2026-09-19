@@ -14,7 +14,7 @@ make setup
 make doctor
 ```
 
-Setup creates only missing private `.env.local`/`.env.dev` files and preserves
+Setup creates private `.env.local`/`.env.test` files and preserves
 existing values. These files are ignored by Git. Doctor is read-only.
 
 ## Run LOCAL or DEV
@@ -107,7 +107,7 @@ No custom environment variables, env-file profile, or Flask configuration is nee
 Marking `src/` as Sources Root is optional editor assistance, not a runtime requirement.
 In VS Code select the workspace `.venv` and **Flask: host LOCAL** (F5).
 Both IDEs and `python src/main.py` use the same direct-only loader for the repository's
-private `.env.host.local`, independently of working directory. The host server binds
+private `.env.local`, independently of working directory. The host server binds
 `127.0.0.1:5300`; the IDE owns debugging. No reloader or built-in debugger is enabled.
 The imported factory remains `main:create_app()` and never loads host configuration.
 

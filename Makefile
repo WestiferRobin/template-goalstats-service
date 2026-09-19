@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 ENV ?= local
-PYTHON ?= python3
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3.12)
 export ENV MESSAGE
 export PYTHONDONTWRITEBYTECODE = 1
 

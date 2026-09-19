@@ -78,27 +78,13 @@ script execution naturally exposes it, pytest uses its configured paths, Alembic
 uses its existing prepend path, and Docker/Gunicorn use their existing PYTHONPATH.
 
 Track only portable `.vscode/settings.json`, `.vscode/launch.json`, and optional
-`.vscode/extensions.json`. Ignore `.idea/`, `.venv/`, `.env.host.local`, and
+`.vscode/extensions.json`. Ignore `.idea/`, `.venv/`, `.env.local`, and
 `.host-sessions/`. No extra dotenv example or dependency manifest is introduced.
 
-Prompt 2 must extend the parent's exact `scripts/scaffold-transform.py:IDENTITY_PATHS`:
-
-- Database identities `goalstats_template_py_local` / `goalstats_template_py_dev`:
-  add `scripts/host_development.py` to their prefix's exact allowlist.
-- `goalstats-template-py`: add `scripts/host_development.py`,
-  `scripts/test_ownership.py`, and `scripts/tests/test_host_development.py`.
-
-Existing allowed paths cover remaining identity occurrences. Shared VS Code files
-and the host certification module contain no service identity. Generic TEST database,
-receipt/session labels and extension keys stay unchanged. The existing path policy
-accepts portable VS Code JSON and rejects any new `.env.*` example; retain `.env.example`
-as the only tracked env source. Strengthen parent artifact rejection for `.idea/`
-and `.host-sessions/`, and restrict `.vscode/` payloads to the three portable files.
-Add transformation/contract tests for these identity paths, exact host entrypoint,
-provider commands, ownership guard and portable IDE files; update the independent
-scaffold fixture/golden expectations and parent development contract accordingly.
-After certification/publication authorization, update the parent's canonical template
-SHA and approved pins in the later prompts. No parent or User changes occur here.
+Scaffolding must preserve the shared code-owned configuration schema, private setup,
+manifest-based TEST ownership and portable IDE launch. Reject all real env files and
+internal state from payloads; generated services create their own `.env.local` and
+`.env.test` through setup. Identity literals are transformed only in reviewed paths.
 
 Direct `src/main.py` means LOCAL host development. The service-neutral
 `src/settings/host.py` loader belongs only to that entrypoint; the factory, Docker,

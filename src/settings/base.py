@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
+from settings import environment
+
 
 class ConfigurationError(ValueError):
     """A safe configuration message that never includes configuration values."""
@@ -35,13 +37,10 @@ def database_url(value: str) -> URL:
 
 
 def boolean(value: str) -> bool:
-    match value.strip().lower():
-        case "true" | "1":
-            return True
-        case "false" | "0":
-            return False
-        case _:
-            raise ConfigurationError("OPENAPI_ENABLED must be true, false, 1 or 0.")
+    try:
+        return environment.boolean(value)
+    except environment.EnvironmentError as exc:
+        raise ConfigurationError(str(exc)) from None
 
 
 def redis_url(value: str) -> str | None:
@@ -64,12 +63,9 @@ def redis_url(value: str) -> str | None:
 
 def cache_ttl(value: str) -> int:
     try:
-        result = int(value)
-        if not 1 <= result <= 86400:
-            raise ValueError
-        return result
-    except ValueError:
-        raise ConfigurationError("CACHE_TTL_SECONDS must be an integer from 1 to 86400.") from None
+        return environment.cache_ttl(value)
+    except environment.EnvironmentError as exc:
+        raise ConfigurationError(str(exc)) from None
 
 
 def cache_prefix(value: str) -> str:
@@ -94,9 +90,12 @@ class Settings:
         env = source.get("APP_ENV", "local").strip().lower()
         if env not in {"local", "dev", "test"}:
             raise ConfigurationError("APP_ENV must be local, dev or test.")
-        level = source.get("LOG_LEVEL", "INFO").strip().upper()
-        if level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
-            raise ConfigurationError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL.")
+        try:
+            level = environment.log_level(
+                source.get("LOG_LEVEL", environment.POLICY_DEFAULTS["LOG_LEVEL"])
+            )
+        except environment.EnvironmentError as exc:
+            raise ConfigurationError(str(exc)) from None
         return cls(
             app_env=env,
             database_url=database_url(source.get("DATABASE_URL", "")),
@@ -105,6 +104,8 @@ class Settings:
             cache_key_prefix=cache_prefix(
                 source.get("CACHE_KEY_PREFIX", f"goalstats-template-py:{env}:v1")
             ),
-            cache_ttl_seconds=cache_ttl(source.get("CACHE_TTL_SECONDS", "300")),
+            cache_ttl_seconds=cache_ttl(
+                source.get("CACHE_TTL_SECONDS", environment.POLICY_DEFAULTS["CACHE_TTL_SECONDS"])
+            ),
             openapi_enabled=boolean(source.get("OPENAPI_ENABLED", "false")),
         )

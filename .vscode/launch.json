@@ -19,7 +19,6 @@
       "module": "pytest",
       "python": "${workspaceFolder}/.venv/bin/python",
       "cwd": "${workspaceFolder}",
-      "envFile": "${input:testSessionEnv}",
       "args": [
         "${input:testNode}",
         "-s"
@@ -30,11 +29,6 @@
     }
   ],
   "inputs": [
-    {
-      "id": "testSessionEnv",
-      "type": "promptString",
-      "description": "Private env file printed by the running make test-providers owner"
-    },
     {
       "id": "testNode",
       "type": "promptString",

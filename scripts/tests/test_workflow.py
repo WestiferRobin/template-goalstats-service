@@ -24,9 +24,16 @@ def test_disposable_stack_requires_owned_identity(project):
 
 def test_environment_parser_preserves_values_without_shell_execution(tmp_path):
     config = tmp_path / ".env.local"
-    config.write_text("# comment\nPOSTGRES_PASSWORD=abcdefghijklmnop\nAPP_PORT=5101\n")
-    assert read_settings(config) == {"POSTGRES_PASSWORD": "abcdefghijklmnop", "APP_PORT": "5101"}
-    config.write_text("POSTGRES_PASSWORD=$(touch unexpected)\nAPP_PORT=5101\n")
+    config.write_text(
+        "# comment\nPOSTGRES_PASSWORD=abcdefghijklmnop\n"
+        "DEV_POSTGRES_PASSWORD=ponmlkjihgfedcba\nLOCAL_APP_PORT=5101\n"
+    )
+    config.chmod(0o600)
+    assert read_settings(config)["POSTGRES_PASSWORD"] == "abcdefghijklmnop"
+    assert read_settings(config)["APP_PORT"] == "5101"
+    config.write_text(
+        "POSTGRES_PASSWORD=$(touch unexpected)\nDEV_POSTGRES_PASSWORD=ponmlkjihgfedcba\n"
+    )
     with pytest.raises(RuntimeError, match="POSTGRES_PASSWORD"):
         read_settings(config)
     assert not (tmp_path / "unexpected").exists()
@@ -90,7 +97,9 @@ def test_setup_preserves_existing_private_configuration(monkeypatch, tmp_path):
     import workflow
 
     monkeypatch.setattr(workflow.shutil, "which", lambda tool: tool)
-    monkeypatch.setattr(workflow, "run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        workflow, "run", lambda *args, **kwargs: __import__("types").SimpleNamespace(stdout="")
+    )
     workflow.setup(tmp_path)
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     workflow.setup(tmp_path)

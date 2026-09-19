@@ -14,11 +14,8 @@ from settings.base import ConfigurationError
 
 @pytest.fixture
 def host_file(tmp_path, monkeypatch):
-    path = tmp_path / ".env.host.local"
-    path.write_text(
-        "APP_ENV=local\nDATABASE_URL=postgresql+psycopg://u:secret@127.0.0.1:55432/db\n"
-        "REDIS_URL=redis://127.0.0.1:56379/0\n"
-    )
+    path = tmp_path / ".env.local"
+    path.write_text("POSTGRES_PASSWORD=abcdefghijklmnop\nDEV_POSTGRES_PASSWORD=ponmlkjihgfedcba\n")
     path.chmod(0o600)
     monkeypatch.setattr(host, "HOST_FILE", path)
     for key in host.KEYS:
@@ -41,7 +38,7 @@ def test_direct_local_constructs_once_without_reloader_or_dotenv(host_file, monk
     factory.assert_called_once()
     values = factory.call_args.args[0]
     assert values["APP_ENV"] == "local" and values["FLASK_DEBUG"] == "0"
-    assert values["DATABASE_URL"].endswith(":55432/db")
+    assert values["DATABASE_URL"].endswith(":55432/goalstats_template_py_local")
     diagnostics.assert_called_once_with(factory.return_value)
     factory.return_value.run.assert_called_once_with(
         host="127.0.0.1",
@@ -67,14 +64,14 @@ def test_direct_refuses_nonlocal_before_reading_file(host_file, monkeypatch, mod
 def test_file_location_does_not_depend_on_cwd(host_file, tmp_path, monkeypatch, cwd):
     directory = tmp_path / cwd
     directory.mkdir()
-    (directory / ".env.host.local").write_text("must not load cwd file")
+    (directory / ".env.local").write_text("must not load cwd file")
     monkeypatch.chdir(directory)
     assert host.load_host_config({})["APP_ENV"] == "local"
 
 
 def test_missing_file_is_actionable(host_file):
     host_file.unlink()
-    with pytest.raises(ConfigurationError, match="Run make providers ENV=local"):
+    with pytest.raises(ConfigurationError, match="make providers ENV=local"):
         host.load_host_config({})
 
 
@@ -121,9 +118,9 @@ def test_nonregular_file_refused(tmp_path):
 
 def test_literal_values_are_not_evaluated_or_interpolated(host_file):
     with host_file.open("a") as stream:
-        stream.write("CACHE_KEY_PREFIX=${HOME}\n")
-    assert host.read_host_file(host_file)["CACHE_KEY_PREFIX"] == "${HOME}"
-    with pytest.raises(ConfigurationError, match="CACHE_KEY_PREFIX"):
+        stream.write("LOG_LEVEL=${HOME}\n")
+    assert host.read_host_file(host_file)["LOG_LEVEL"] == "${HOME}"
+    with pytest.raises(ConfigurationError, match="LOG_LEVEL"):
         host.load_host_config({})
 
 
@@ -135,7 +132,7 @@ def test_precedence_defaults_and_optional_redis(host_file):
     assert config["OPENAPI_ENABLED"] == "true"
     assert config["LOG_LEVEL"] == "DEBUG"
     assert config["REDIS_URL"] == ""
-    assert "CACHE_KEY_PREFIX" not in config  # Existing Settings owns identity/defaults.
+    assert config["CACHE_KEY_PREFIX"] == "goalstats-template-py:local:v1"
 
 
 @pytest.mark.parametrize(
@@ -160,8 +157,8 @@ def test_invalid_override_refused(host_file, key, value):
 
 
 def test_missing_database_refused(host_file):
-    host_file.write_text("APP_ENV=local\n")
-    with pytest.raises(ConfigurationError, match="DATABASE_URL"):
+    host_file.write_text("DEV_POSTGRES_PASSWORD=abcdefghijklmnop\n")
+    with pytest.raises(ConfigurationError, match="POSTGRES_PASSWORD"):
         host.load_host_config({})
 
 

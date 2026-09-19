@@ -75,7 +75,7 @@ repository and cache, and exercise IDE discovery and individual test selection.
 Do not report actual IDE debugger/discovery acceptance from CLI tests alone.
 
 Zero-friction startup acceptance uses an exact disposable source copy and its actual
-repository `.env.host.local`; the developer's private file is never replaced. It
+repository `.env.local`; the developer's private file is never replaced. It
 launches bare main with application variables removed, from root and `src/` cwd.
 Unit tests cover private-file parsing, contradictory modes, precedence, loopback,
 provider diagnostics, occupied ports, and factory/import isolation. Actual IDE Run

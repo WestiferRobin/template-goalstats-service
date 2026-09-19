@@ -3,7 +3,6 @@
 import ipaddress
 import os
 import socket
-import stat
 from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
@@ -16,8 +15,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from infra.resources.db import Database, is_ready
 from infra.resources.redis import RedisCache
 from settings.base import ConfigurationError, Settings
+from settings.environment import (
+    LOCAL_KEYS,
+    EnvironmentError,
+    application,
+    load_machine,
+    read_private,
+)
 
-HOST_FILE = Path(__file__).resolve().parents[2] / ".env.host.local"
+HOST_FILE = Path(__file__).resolve().parents[2] / ".env.local"
 KEYS = frozenset(
     {
         "APP_ENV",
@@ -34,37 +40,11 @@ KEYS = frozenset(
 
 
 def read_host_file(path: Path) -> dict[str, str]:
-    """Read the generated literal KEY=value format without following symlinks."""
+    """Read only canonical private machine configuration."""
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, encoding="utf-8") as stream:
-            info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-                raise ConfigurationError(
-                    "LOCAL host configuration must be a private regular file owned by this user."
-                )
-            content = stream.read()
-    except FileNotFoundError:
-        raise ConfigurationError(
-            "LOCAL host configuration is missing. Run make providers ENV=local."
-        ) from None
-    except (OSError, UnicodeError):
-        raise ConfigurationError(
-            "Cannot read private LOCAL host configuration; symlinks are not allowed."
-        ) from None
-    values: dict[str, str] = {}
-    for line in content.splitlines():
-        if not line or line.startswith("#"):
-            continue
-        key, separator, value = line.partition("=")
-        if not separator or key not in KEYS or key in values or "\x00" in value:
-            raise ConfigurationError(
-                "Invalid LOCAL host configuration: use unique supported KEY=value lines."
-            )
-        values[key] = value
-    if values.get("APP_ENV", "").strip().lower() != "local":
-        raise ConfigurationError("LOCAL host configuration must specify APP_ENV=local.")
-    return values
+        return read_private(path, LOCAL_KEYS)
+    except EnvironmentError as exc:
+        raise ConfigurationError(str(exc)) from None
 
 
 def loopback(host: str | None) -> bool:
@@ -83,8 +63,10 @@ def load_host_config(environ: Mapping[str, str] | None = None) -> dict[str, str]
             "Direct src/main.py execution supports LOCAL only. "
             "Remove the conflicting APP_ENV setting."
         )
-    values = {"APP_ENV": "local", "OPENAPI_ENABLED": "true", "HOST_APP_PORT": "5300"}
-    values.update(read_host_file(HOST_FILE))
+    try:
+        values = application(load_machine(HOST_FILE), "local", host=True)
+    except EnvironmentError as exc:
+        raise ConfigurationError(str(exc)) from None
     values.update({key: source[key] for key in KEYS if key in source})
     values.update(APP_ENV="local", FLASK_DEBUG="0")
     settings = Settings.load(values)

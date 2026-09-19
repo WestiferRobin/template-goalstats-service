@@ -16,14 +16,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from environment_config import schema
+from environment_setup import setup_files
+
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "goalstats-template-py:tooling"
 HELP = """GoalStats Flask — LOCAL reloads mounted source; DEV runs built Gunicorn.
 SETUP     make doctor                Read-only prerequisite and setup diagnosis
-          make setup                 Verify tools; create missing private env files
+          make setup                 Create/migrate private .env.local + .env.test
           make build ENV=local|dev   Build the selected runtime
 RUNTIME   make run ENV=local|dev     Start and wait for exactly 200 Healthy
-IDE       make providers ENV=local  Healthy LOCAL providers + private host env; no app/migration
+IDE       make providers ENV=local  Healthy LOCAL providers + canonical config; no app/migration
           make providers-stop ENV=local Stop providers only; preserve data
           make test-providers        Foreground owned disposable host TEST session
           make certify-host PYTHON=.venv/bin/python  Automated host acceptance (no IDE UI)
@@ -89,49 +92,77 @@ def setup(directory=ROOT):
         raise RuntimeError("Python 3.12 is required for host orchestration and the application")
     run(["docker", "compose", "version"])
     run(["docker", "info"], capture=True)
-    for env, port in (("local", 5100), ("dev", 5200)):
-        path = directory / f".env.{env}"
+
+    def has_volume(mode):
+        label = "label=com.docker.compose.project=" + schema.SERVICE + "-" + mode
+        return bool(
+            run(["docker", "volume", "ls", "-q", "--filter", label], capture=True).stdout.strip()
+        )
+
+    def verify(mode, values):
+        selected = {
+            **values,
+            "POSTGRES_PASSWORD": values[
+                "POSTGRES_PASSWORD" if mode == "local" else "DEV_POSTGRES_PASSWORD"
+            ],
+            "APP_PORT": values[mode.upper() + "_APP_PORT"],
+        }
+        stack = Stack(mode, settings=selected)
+        if stack.compose("ps", "--status", "running", "-q", "app", capture=True).stdout.strip():
+            raise RuntimeError("Stop the full app before migrating private configuration.")
+        existed = bool(stack.compose("ps", "-a", "-q", "postgres", capture=True).stdout.strip())
+        was_running = bool(
+            stack.compose(
+                "ps", "--status", "running", "-q", "postgres", capture=True
+            ).stdout.strip()
+        )
         try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            print(f"Preserved existing {path.name}")
-            continue
-        with os.fdopen(fd, "w") as stream:
-            stream.write(f"POSTGRES_PASSWORD={secrets.token_hex(24)}\nAPP_PORT={port}\n")
-        print(f"Created private {path.name}")
-    print("Next: make build ENV=local; make migrate ENV=local; make run ENV=local")
+            stack.compose("up", "-d", "--wait", "--wait-timeout", "60", "postgres")
+            result = stack.compose(
+                "exec",
+                "-T",
+                "-e",
+                "PGPASSWORD=" + selected["POSTGRES_PASSWORD"],
+                "postgres",
+                "psql",
+                "-h",
+                "postgres",
+                "-U",
+                "goalstats",
+                "-d",
+                schema.DATABASE + "_" + mode,
+                "-At",
+                "-c",
+                "SELECT 1",
+                capture=True,
+                check=False,
+            )
+            if result.returncode or result.stdout.strip() != "1":
+                raise RuntimeError(
+                    "Existing PostgreSQL authentication failed; configuration preserved."
+                )
+        finally:
+            if not was_running:
+                stack.compose("stop", "postgres")
+                if not existed:
+                    stack.compose("rm", "-f", "postgres")
+
+    setup_files(directory, has_volume=has_volume, verify=verify)
+    print("Next: make providers ENV=local; make build ENV=local; make migrate ENV=local")
 
 
-def read_settings(path):
-    if not path.exists():
-        raise RuntimeError("Missing environment file; run make setup")
-    values = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            key, sep, value = line.partition("=")
-            if (
-                not sep
-                or key
-                not in {
-                    "POSTGRES_PASSWORD",
-                    "APP_PORT",
-                    "HOST_APP_PORT",
-                    "LOCAL_POSTGRES_PORT",
-                    "LOCAL_REDIS_PORT",
-                }
-                or key in values
-            ):
-                raise RuntimeError("Environment file contains an unknown or duplicate key")
-            values[key] = value
-    if not re.fullmatch(r"[a-zA-Z0-9_-]{16,128}", values.get("POSTGRES_PASSWORD", "")):
-        raise RuntimeError("POSTGRES_PASSWORD must be 16–128 URL-safe characters")
-    for key in ("APP_PORT", "HOST_APP_PORT", "LOCAL_POSTGRES_PORT", "LOCAL_REDIS_PORT"):
-        if key == "APP_PORT" or key in values:
-            port = values.get(key, "")
-            if not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535:
-                raise RuntimeError(f"{key} must be a valid port number")
-    return values
+def read_settings(path, mode="local"):
+    try:
+        values = schema.load_machine(path)
+    except schema.EnvironmentError as exc:
+        raise RuntimeError(str(exc)) from None
+    return {
+        **values,
+        "POSTGRES_PASSWORD": values[
+            "POSTGRES_PASSWORD" if mode == "local" else "DEV_POSTGRES_PASSWORD"
+        ],
+        "APP_PORT": values[mode.upper() + "_APP_PORT"],
+    }
 
 
 class Stack:
@@ -145,9 +176,14 @@ class Stack:
             r"goalstats-template-py-(test|cert)-[a-f0-9]+", project
         ):
             raise RuntimeError("Disposable project must use a unique owned test/cert identity")
-        self.settings = settings if settings is not None else read_settings(ROOT / f".env.{env}")
+        self.settings = (
+            settings if settings is not None else read_settings(ROOT / ".env.local", env)
+        )
         # Ignore ambient application/Compose settings, and never source shell env files.
         self.process_env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+        self.process_env.update(
+            schema.test_policy(ROOT) if env == "test" else schema.POLICY_DEFAULTS
+        )
         self.process_env.update(self.settings)
         # Optional LOCAL settings must never come from ambient shell variables.
         for key, default in (("LOCAL_POSTGRES_PORT", "55432"), ("LOCAL_REDIS_PORT", "56379")):
@@ -389,7 +425,7 @@ def doctor():
         if not (ROOT / name).is_file():
             raise RuntimeError(f"Required repository file missing: {name}")
     for env in ("local", "dev"):
-        read_settings(ROOT / f".env.{env}")
+        read_settings(ROOT / ".env.local", env)
         print(f"OK {env.upper()} private configuration")
     print("Doctor: PASS (read-only)")
 

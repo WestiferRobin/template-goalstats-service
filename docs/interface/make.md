@@ -34,7 +34,7 @@ make migration MESSAGE="describe the change"
 make migration-check ENV=local
 ```
 
-`setup` preserves existing files. `doctor` only diagnoses. `run` requires an already
+`setup` creates `.env.local` and `.env.test`, preserves valid canonical files, and safely migrates legacy configuration. `doctor` only diagnoses. `run` requires an already
 migrated database and never applies migrations. `stop` retains developer DB volumes.
 `migration` requires LOCAL and a nonblank message; it writes to `alembic/` for review.
 
@@ -57,9 +57,9 @@ successful suites. Commands propagate failures and do not stage, commit, or depl
 
 | Command | Behavior |
 | --- | --- |
-| `providers ENV=local` | Start only healthy LOCAL PostgreSQL/Redis; verify bindings/auth; generate private host env; no app/migration |
+| `providers ENV=local` | Start only healthy LOCAL PostgreSQL/Redis; verify bindings/auth; use canonical machine config; no app/migration |
 | `providers-stop ENV=local` | Stop only providers; retain PostgreSQL volume, containers and network; refuse active full LOCAL app |
-| `test-providers` | Foreground isolated disposable TEST session, dynamic loopback endpoints, private env + ownership manifest; Ctrl-C/SIGTERM cleanup |
+| `test-providers` | Foreground isolated disposable TEST session, dynamic loopback endpoints, private ownership manifest; Ctrl-C/SIGTERM cleanup |
 | `certify-host PYTHON=.venv/bin/python` | Python 3.12 host acceptance after installing requirements; disposable providers, CRUD/persistence, individual tests, ownership/signal checks; no IDE UI claim |
 
 `dev.mk` owns LOCAL provider targets, `test.mk` owns `test-providers`, and `ci.mk`

@@ -1,22 +1,19 @@
-import os
 from uuid import uuid4
 
 import pytest
 from redis import Redis
-from test_ownership import verify_test_providers
+from test_ownership import owned_test_config
 
 
 @pytest.fixture(scope="session")
 def redis_url():
-    value = os.environ.get("TEST_REDIS_URL")
-    if not value:
-        pytest.skip("TEST_REDIS_URL is not set; provision isolated Redis.")
-    if os.environ.get("TEST_REDIS_DISPOSABLE") != "1":
-        pytest.fail("TEST_REDIS_DISPOSABLE=1 is required.")
     try:
-        verify_test_providers()
+        owned = owned_test_config()
     except RuntimeError as exc:
         pytest.fail(str(exc), pytrace=False)
+    value = owned.get("TEST_REDIS_URL")
+    if not value or owned.get("TEST_REDIS_DISPOSABLE") != "1":
+        pytest.fail("Verified disposable TEST configuration is required.", pytrace=False)
     from settings.base import redis_url as validate
 
     try:

@@ -27,7 +27,9 @@ Redis 7.4 versions/digests are shared across all three Compose files.
 
 Run `make setup` twice safely: existing files and values are preserved. It verifies
 Docker/Compose, Make and host Python, creates only missing private environment files,
-and prints next steps. It starts no containers and modifies no application source.
+and prints next steps. Fresh setup starts no containers. Legacy migration may briefly
+start an existing PostgreSQL provider to verify its credentials, then restore its stopped state.
+Setup modifies no application source.
 Build, migrate, then run the selected stack. DEV uses two synchronous Gunicorn workers,
 30-second request timeout and 10-second graceful shutdown, with a 15-second Compose
 stop grace period and an init process for signal forwarding/reaping.
@@ -119,7 +121,7 @@ Use Python **3.12**, repository `.venv/bin/python`, and only `requirements.txt`.
 Run `python3.12 -m venv .venv`, `.venv/bin/python -m pip install -r requirements.txt`,
 then `make setup`. `make providers ENV=local` starts PostgreSQL and Redis only,
 waits for health, verifies loopback bindings and PostgreSQL authentication, and
-creates private `.env.host.local`. It reuses the existing LOCAL project and DB volume.
+validates canonical configuration. It reuses the existing LOCAL project and DB volume.
 It neither migrates nor starts Flask. Next run `make migrate ENV=local`, then
 Run/Debug `src/main.py`. Rebuild an existing image after dependency/migration changes.
 
@@ -132,7 +134,7 @@ Run/Debug `src/main.py`. Rebuild an existing image after dependency/migration ch
 | Import analysis | optionally mark `src/` Sources Root | `python.analysis.extraPaths` |
 | Tests | pytest, root working directory, select `tests/unit` or `tests/integration` | Python Test Explorer, same directories |
 
-Direct execution selects LOCAL automatically, reads the repository `.env.host.local`,
+Direct execution selects LOCAL automatically, reads the repository `.env.local`,
 and constructs the factory once. Explicit DEV/TEST/unknown/blank modes are refused. It
 binds `127.0.0.1` on validated `HOST_APP_PORT` (default 5300). It disables
 reloader, built-in debugger and Flask generic dotenv loading. IDE breakpoints can therefore target
@@ -141,7 +143,7 @@ ignored. Portable `.vscode` configuration contains no secrets or session paths.
 
 The LOCAL PostgreSQL and Redis host ports default to 55432 and 56379 on loopback.
 `.env.local` can override `LOCAL_POSTGRES_PORT`, `LOCAL_REDIS_PORT`, and
-`HOST_APP_PORT`. Existing two-key files remain valid. Occupied ports fail clearly.
+`HOST_APP_PORT`. Run `make setup` to migrate legacy two-key files safely. Occupied ports fail clearly.
 `make providers-stop ENV=local` stops only the two providers and retains data,
 containers and their network for reuse. Both provider commands refuse an active
 full LOCAL app: use `make stop ENV=local` before switching from full Docker LOCAL.
@@ -152,11 +154,9 @@ Build initially and after requirements or migration changes; migrate initially a
 for new revisions. Host source edits need a restart, not a Docker rebuild. Repeat
 pip installation when requirements change. Docker DEV still requires source rebuilds.
 `make migrate ENV=local` remains canonical; explicit host Alembic environment is
-optional. `.env.local` is Compose input only; the application never reads it.
+optional. Host and Docker derive URLs from the same `.env.local` machine configuration.
 
-A differing `.env.host.local` is preserved and rejected, including changed ports,
-identity or credentials. Verify the existing volume's credentials and intended
-configuration, then explicitly remove the stale host file and rerun `make providers`.
+Run `make setup` to migrate legacy configuration safely. Conflicting values are refused.
 Changing `.env.local` does **not** rotate passwords in an existing PostgreSQL volume.
 Never delete a data volume to resolve an environment mismatch.
 
@@ -171,7 +171,7 @@ The direct-only `settings/host.py` helper reads one private, user-owned regular 
 never follows symlinks, evaluates shell text, discovers other dotenv files, or mutates
 `os.environ`. Supported process overrides win over host-file values and safe LOCAL
 defaults. Invalid overrides and non-loopback provider URLs fail; FLASK_DEBUG cannot
-enable Flask debugging. Missing configuration directs you to `make providers ENV=local`.
+enable Flask debugging. Missing configuration directs you to setup, then providers.
 PostgreSQL unavailability refuses startup with a credential-free message. Reachable
 but unmigrated databases allow startup with migration guidance and Unhealthy readiness.
 Redis unavailability retains database fallback and Degraded readiness. Startup never

@@ -16,7 +16,10 @@ from workflow import Stack, read_settings
 @pytest.mark.parametrize("value", ["0", "65536", "no", "-1", "５３００", ""])
 def test_invalid_host_port_refused(tmp_path, key, value):
     path = tmp_path / ".env.local"
-    path.write_text(f"POSTGRES_PASSWORD=abcdefghijklmnop\nAPP_PORT=5100\n{key}={value}\n")
+    path.write_text(
+        f"POSTGRES_PASSWORD=abcdefghijklmnop\nDEV_POSTGRES_PASSWORD=ponmlkjihgfedcba\nLOCAL_APP_PORT=5100\n{key}={value}\n"
+    )
+    path.chmod(0o600)
     with pytest.raises(RuntimeError, match=key):
         read_settings(path)
 
@@ -27,30 +30,6 @@ def test_ambient_provider_ports_do_not_override_configuration(monkeypatch):
     stack = Stack("local", settings={"POSTGRES_PASSWORD": "unused", "APP_PORT": "5100"})
     assert stack.process_env["LOCAL_POSTGRES_PORT"] == "55432"
     assert stack.process_env["LOCAL_REDIS_PORT"] == "56379"
-
-
-def test_stale_private_host_file_preserved_and_secrets_not_reported(tmp_path):
-    path = tmp_path / ".env.host.local"
-    host.private_write(path, "old secret")
-    with pytest.raises(RuntimeError, match="Stale") as exc:
-        host.check_host_file(path, "new secret")
-    assert path.read_text() == "old secret"
-    assert "secret" not in str(exc.value)
-    assert path.stat().st_mode & 0o777 == 0o600
-    host.check_host_file(path, "old secret")
-    path.chmod(0o644)
-    with pytest.raises(RuntimeError, match="0600"):
-        host.check_host_file(path, "old secret")
-
-
-def test_symlink_host_file_refused(tmp_path):
-    target = tmp_path / "target"
-    host.private_write(target, "preserve")
-    path = tmp_path / ".env.host.local"
-    path.symlink_to(target)
-    with pytest.raises(RuntimeError, match="symlink"):
-        host.check_host_file(path, "replacement")
-    assert target.read_text() == "preserve"
 
 
 def test_provider_stop_refuses_active_full_app():
@@ -225,3 +204,25 @@ def test_owned_session_refuses_mismatch_before_connections(owned_session, change
             Path(env["TEST_SESSION_MANIFEST"]).write_text(json.dumps(manifest))
     with pytest.raises(RuntimeError, match="Unverified"):
         ownership.verify_host_session(env)
+
+
+def test_owned_session_discovered_without_environment_profile(owned_session):
+    env, _, _, _ = owned_session
+    values = ownership.owned_test_config({})
+    assert values["TEST_DATABASE_URL"] == env["TEST_DATABASE_URL"]
+    assert values["TEST_REDIS_URL"] == env["TEST_REDIS_URL"]
+    assert values["TEST_DATABASE_DISPOSABLE"] == "1"
+
+
+def test_ambiguous_sessions_refused_without_provider_inspection(owned_session, monkeypatch):
+    from pathlib import Path
+
+    env, _, _, _ = owned_session
+    extra = Path(env["TEST_SESSION_MANIFEST"]).parent.parent / "other"
+    extra.mkdir()
+    (extra / "manifest.json").write_text("{}")
+    inspect = Mock(side_effect=AssertionError("must not inspect"))
+    monkeypatch.setattr(ownership, "inspect_container", inspect)
+    with pytest.raises(RuntimeError, match="exactly one"):
+        ownership.owned_test_config({})
+    inspect.assert_not_called()
