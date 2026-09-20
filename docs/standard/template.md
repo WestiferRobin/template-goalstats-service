@@ -50,8 +50,10 @@ is included. PostgreSQL and Redis are the only runtime providers.
 
 ## Flat Python execution contract
 
-`src/main.py` exports `create_app`; `src/routers/dependencies.py` provides typed resource lookup
-and lightweight service construction. Modules import directly from `enums`, `errors`, `settings`,
+`src/main.py` exports `create_app` and explicitly connects application-owned resources,
+cache adapters and services to typed Blueprint factories. Routes capture services directly;
+`app.extensions` retains resource references for diagnostics and cleanup, not service lookup.
+Modules import directly from `enums`, `errors`, `settings`,
 `models`, `schemas`, `infra`, `services`, and `routers`. There is no
 intermediate service package and no `src` package to import.
 

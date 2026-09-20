@@ -44,6 +44,8 @@ from routers.health import create_health_blueprint
 from routers.item import create_items_blueprint
 from routers.openapi import create_docs_blueprint
 from schemas.problem import ProblemDetails
+from services.action import ActionService
+from services.item import ItemService
 from settings.base import ConfigurationError
 from settings.core import API_TITLE, API_VERSION, LOGGER_NAME
 from settings.environment import Settings, load_application, load_local
@@ -65,21 +67,27 @@ def create_app(config: Settings | Mapping[str, str] | None = None) -> Flask:
     )
     app.logger = logging.Logger(LOGGER_NAME, level=settings.core.log_level)
     app.logger.addHandler(default_handler)
-    app.extensions["goalstats_settings"] = settings
-    app.extensions["goalstats_database"] = Database(settings.database)
+    database = Database(settings.database)
     cache = RedisCache(settings.redis, app.logger)
+    item_cache = ItemCache(cache, settings.redis.cache_key_prefix, settings.redis.cache_ttl_seconds)
+    action_cache = ActionCache(
+        cache, settings.redis.cache_key_prefix, settings.redis.cache_ttl_seconds
+    )
+    app.extensions["goalstats_settings"] = settings
+    app.extensions["goalstats_database"] = database
     app.extensions["goalstats_cache"] = cache
-    app.extensions["goalstats_item_cache"] = ItemCache(
-        cache, settings.redis.cache_key_prefix, settings.redis.cache_ttl_seconds
-    )
-    app.extensions["goalstats_action_cache"] = ActionCache(
-        cache, settings.redis.cache_key_prefix, settings.redis.cache_ttl_seconds
-    )
+    app.extensions["goalstats_item_cache"] = item_cache
+    app.extensions["goalstats_action_cache"] = action_cache
+
+    item_service = ItemService(database, item_cache)
+    action_service = ActionService(database, action_cache)
     if settings.redis.url is None:
         app.logger.warning("Redis is unconfigured; database fallback is available")
-    app.register_blueprint(create_health_blueprint())
-    app.register_api(create_items_blueprint())
-    app.register_api(create_actions_blueprint())
+    app.register_blueprint(
+        create_health_blueprint(database, cache, settings.redis.cache_key_prefix)
+    )
+    app.register_api(create_items_blueprint(item_service))
+    app.register_api(create_actions_blueprint(action_service))
     register_error_handlers(app)
     if settings.core.openapi_enabled:
         app.register_blueprint(create_docs_blueprint(app))

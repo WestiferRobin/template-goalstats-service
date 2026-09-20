@@ -7,8 +7,10 @@ Route → Service → Repository → SQLAlchemy Session → PostgreSQL
 ORM entity → frozen Pydantic response → explicit JSON serialization → HTTP
 ```
 
-The application factory explicitly constructs app-owned Engine/session and Redis
-pools. Routes obtain services through the typed `routers/dependencies.py` boundary. Services,
+The application factory explicitly connects resources → caches → services → Blueprint
+factories. Each application owns its Engine/session factory, Redis pool, cache adapters
+and stateless services. Routers capture their service through a typed factory argument;
+each database operation creates its own Session and repositories. Services,
 repositories, and cache adapters do not depend on Flask globals. One requirements
 file and Python 3.12 remain the dependency/runtime contract.
 
@@ -111,8 +113,7 @@ identities and cleanup. No User or prediction domain is present.
 
 | Module/package | Responsibility |
 | --- | --- |
-| `main.py` | Factory, resource construction, registration, direct LOCAL startup diagnostics |
-| `routers/dependencies.py` | Typed Flask resource lookup and service construction |
+| `main.py` | Factory, explicit resource/cache/service construction, Blueprint registration, direct LOCAL startup diagnostics |
 | `routers/item.py`, `routers/action.py` | Typed HTTP adapters; Action owns nested Item→Action operations |
 | `routers/health.py` | Native Flask health/readiness Blueprint |
 | `routers/errors.py` | HTTP error mapping and object-body request guard |

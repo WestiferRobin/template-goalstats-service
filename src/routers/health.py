@@ -2,11 +2,12 @@
 
 from flask import Blueprint, Response
 
-from routers.dependencies import get_cache, get_database, get_settings
+from infra.resources.db import Database
+from infra.resources.redis import RedisCache
 from services.readiness import readiness
 
 
-def create_health_blueprint() -> Blueprint:
+def create_health_blueprint(database: Database, cache: RedisCache, prefix: str) -> Blueprint:
     blueprint = Blueprint("health", __name__)
 
     @blueprint.get("/health")
@@ -15,7 +16,7 @@ def create_health_blueprint() -> Blueprint:
 
     @blueprint.get("/ready")
     def ready() -> Response:
-        result = readiness(get_database(), get_cache(), get_settings().redis.cache_key_prefix)
+        result = readiness(database, cache, prefix)
         return Response(result, status=503 if result == "Unhealthy" else 200, mimetype="text/plain")
 
     return blueprint

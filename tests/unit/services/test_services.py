@@ -153,3 +153,106 @@ def test_invalid_database_output_rolls_back_without_cache_fill(graph):
         graph.service.get(graph.row.id)
     assert graph.events == ["begin", "rollback"]
     graph.cache.set.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["item", "action"])
+@pytest.mark.parametrize("fail_one", [False, True])
+def test_shared_service_overlapping_operations_are_isolated(kind, fail_one):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+
+    from flask import has_app_context
+
+    from models.action import Action
+    from models.item import Item
+    from services.item import ItemService
+
+    barrier, lock = Barrier(2, timeout=10), Lock()
+    sessions, repositories, outcomes, invalidated = [], [], {}, []
+    now = datetime.now(UTC)
+    identities = (uuid4(), uuid4())
+
+    class Operation:
+        identity = None
+        closed = False
+
+    class DatabaseFake:
+        @contextmanager
+        def transaction(self):
+            session = Operation()
+            with lock:
+                sessions.append(session)
+            try:
+                yield session
+                if fail_one and session.identity == identities[0]:
+                    raise RuntimeError("isolated commit failure")
+                with lock:
+                    outcomes[session.identity] = "commit"
+            except BaseException:
+                with lock:
+                    outcomes[session.identity] = "rollback"
+                raise
+            finally:
+                session.closed = True
+
+    class RepositoryFake:
+        def __init__(self, session):
+            self.session = session
+            with lock:
+                repositories.append(self)
+
+        def get_by_id(self, identity, *, for_update=False):
+            assert for_update
+            assert not has_app_context()
+            self.session.identity = identity
+            barrier.wait()
+            values = dict(id=identity, name="old", created_at=now, updated_at=now)
+            return (
+                Item(**values, status=ItemStatus.ACTIVE)
+                if kind == "item"
+                else Action(**values, item_id=uuid4(), action_type=ActionType.CREATE)
+            )
+
+        def flush(self):
+            assert not self.session.closed
+
+    class CacheFake:
+        def delete(self, identity):
+            with lock:
+                assert outcomes[identity] == "commit"
+                assert next(s for s in sessions if s.identity == identity).closed
+                invalidated.append(identity)
+
+    database, cache = DatabaseFake(), CacheFake()
+    service = (ItemService if kind == "item" else ActionService)(database, cache, RepositoryFake)
+    original_attributes = vars(service).copy()
+
+    def update(index):
+        command = (
+            ItemUpdate(name=f"operation-{index}", status=ItemStatus.ARCHIVED)
+            if kind == "item"
+            else ActionWrite(name=f"operation-{index}", type=ActionType.UPDATE)
+        )
+        return service.update(identities[index], command)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(update, index) for index in range(2)]
+        for index, future in enumerate(futures):
+            if fail_one and index == 0:
+                with pytest.raises(RuntimeError, match="isolated commit failure"):
+                    future.result(timeout=15)
+            else:
+                result = future.result(timeout=15)
+                assert result.id == identities[index]
+                assert result.name == f"operation-{index}"
+    assert len(sessions) == len(repositories) == 2
+    assert sessions[0] is not sessions[1]
+    assert repositories[0] is not repositories[1]
+    assert {id(repo.session) for repo in repositories} == {id(s) for s in sessions}
+    assert all(session.closed for session in sessions)
+    assert outcomes == {
+        identities[0]: "rollback" if fail_one else "commit",
+        identities[1]: "commit",
+    }
+    assert set(invalidated) == set(identities[1:] if fail_one else identities)
+    assert vars(service) == original_attributes
