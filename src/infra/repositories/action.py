@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from models import Action
+from models.action import Action
 
 
 class ActionRepository:

@@ -51,7 +51,7 @@ def test_conflicts_leave_every_original_byte(tmp_path, failure):
     if failure == "policy":
         private_write(tmp_path / ".env.test", "DATABASE_URL=forbidden\n")
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
-    with pytest.raises((RuntimeError, schema.EnvironmentError)):
+    with pytest.raises((RuntimeError, schema.ConfigurationError)):
         setup_files(
             tmp_path, has_volume=lambda _: True, verify=Mock(side_effect=RuntimeError("auth"))
         )
@@ -77,7 +77,7 @@ def test_missing_configuration_never_replaces_existing_volume_password(tmp_path)
 )
 def test_test_policy_never_accepts_provider_authority(tmp_path, key):
     private_write(tmp_path / ".env.test", key + "=secret\n")
-    with pytest.raises(schema.EnvironmentError) as error:
+    with pytest.raises(schema.ConfigurationError) as error:
         schema.test_policy(tmp_path)
     assert "secret" not in str(error.value)
 
@@ -93,3 +93,23 @@ def test_host_and_container_urls_share_local_identity():
     )
     assert host["REDIS_URL"].replace("127.0.0.1:56379", "redis:6379") == docker["REDIS_URL"]
     assert host["CACHE_KEY_PREFIX"] == docker["CACHE_KEY_PREFIX"]
+
+
+def test_help_bootstraps_without_site_packages():
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    result = subprocess.run(
+        [sys.executable, "-B", "-S", str(root / "scripts/workflow.py"), "help"],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "make setup" in result.stdout

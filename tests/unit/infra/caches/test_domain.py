@@ -11,9 +11,9 @@ from enums.item import ItemStatus
 from infra.caches.action import ActionCache
 from infra.caches.item import ItemCache
 from infra.resources.redis import RedisCache
-from schemas.action.base import ActionResult
-from schemas.item.base import ItemResult
-from settings.base import Settings
+from schemas.action import ActionResponse
+from schemas.item import ItemResponse
+from settings.environment import load_application
 
 
 @pytest.mark.parametrize("kind", ["item", "action"])
@@ -22,9 +22,16 @@ def test_domain_cache_roundtrip_and_invalid_payloads(kind):
     cache = (ItemCache if kind == "item" else ActionCache)(backend, "service:test:v1", 300)
     now, identity = datetime.now(UTC), uuid4()
     result = (
-        ItemResult(identity, "x", ItemStatus.ACTIVE, now, now)
+        ItemResponse(id=identity, name="x", status=ItemStatus.ACTIVE, createdAt=now, updatedAt=now)
         if kind == "item"
-        else ActionResult(identity, uuid4(), "x", ActionType.CREATE, now, now)
+        else ActionResponse(
+            id=identity,
+            itemId=uuid4(),
+            name="x",
+            type=ActionType.CREATE,
+            createdAt=now,
+            updatedAt=now,
+        )
     )
     cache.set(result)
     key, data, ttl = backend.set.call_args.args
@@ -45,7 +52,7 @@ def test_domain_cache_roundtrip_and_invalid_payloads(kind):
 
 @pytest.mark.parametrize("payload", [b"{", b"[]", b"null", b"1", b"\xff"])
 def test_generic_cache_treats_corrupt_data_as_miss(explicit_config, payload):
-    cache = RedisCache(Settings.load(explicit_config), Mock(spec=logging.Logger))
+    cache = RedisCache(load_application(explicit_config).redis, Mock(spec=logging.Logger))
     cache.client = Mock()
     cache.client.get.return_value = payload
     assert cache.get("key") is None
@@ -53,7 +60,7 @@ def test_generic_cache_treats_corrupt_data_as_miss(explicit_config, payload):
 
 def test_provider_failures_are_safe_and_optional(explicit_config):
     logger = Mock(spec=logging.Logger)
-    cache = RedisCache(Settings.load(explicit_config), logger)
+    cache = RedisCache(load_application(explicit_config).redis, logger)
     assert cache.get("x") is None
     assert cache.ready("x") is False
     cache.set("x", {}, 1)

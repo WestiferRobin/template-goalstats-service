@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from composition import get_database
+from routers.dependencies import get_database
 
 
 def test_factory_instances_have_independent_resources(app_factory, explicit_config):
@@ -13,7 +13,7 @@ def test_factory_instances_have_independent_resources(app_factory, explicit_conf
         first.extensions["goalstats_database"].engine
         is not second.extensions["goalstats_database"].engine
     )
-    assert first.extensions["goalstats_api"] is not second.extensions["goalstats_api"]
+    assert first.api_doc is not second.api_doc
     assert first.logger is not second.logger
     assert first.logger.level != second.logger.level
     with first.app_context():
@@ -45,7 +45,7 @@ def test_unavailable_database_is_unhealthy_without_provider_details(app):
 
 def test_openapi_preserves_problem_contract_and_excludes_operational_paths(app):
     spec = app.test_client().get("/swagger/v1/swagger.json").json
-    assert spec["openapi"] == "3.0.3"
+    assert spec["openapi"] == "3.1.0"
     assert "/health" not in spec["paths"] and "/ready" not in spec["paths"]
     assert "/items" in spec["paths"] and "/actions" in spec["paths"]
     assert set(spec["components"]["schemas"]["ProblemDetails"]["required"]) == {
@@ -54,7 +54,10 @@ def test_openapi_preserves_problem_contract_and_excludes_operational_paths(app):
         "status",
         "detail",
     }
-    assert "application/problem+json" in spec["components"]["responses"]["Problem"]["content"]
+    assert (
+        "application/problem+json"
+        in spec["paths"]["/items"]["get"]["responses"]["default"]["content"]
+    )
 
 
 def test_import_and_factory_have_no_filesystem_or_provider_side_effects(tmp_path):

@@ -161,7 +161,7 @@ def setup(directory=ROOT):
 def read_settings(path, mode="local"):
     try:
         values = schema.load_machine(path)
-    except schema.EnvironmentError as exc:
+    except schema.ConfigurationError as exc:
         raise RuntimeError(str(exc)) from None
     return {
         **values,
@@ -529,6 +529,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, schema.EnvironmentError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, schema.ConfigurationError, subprocess.CalledProcessError) as exc:
         print(f"Workflow failed: {exc}", file=sys.stderr)
         sys.exit(exc.returncode if isinstance(exc, subprocess.CalledProcessError) else 1)

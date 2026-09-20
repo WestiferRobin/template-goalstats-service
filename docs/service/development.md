@@ -168,9 +168,9 @@ IDE integration tests and must remain running. See [test ownership](../testing/o
 
 ### Direct startup diagnostics
 
-The direct-only `settings/host.py` helper reads one private, user-owned regular file,
+The explicit `settings/environment.py` LOCAL loader reads one private, user-owned regular file,
 never follows symlinks, evaluates shell text, discovers other dotenv files, or mutates
-`os.environ`. Supported process overrides win over host-file values and safe LOCAL
+`os.environ`. Supported process overrides win over machine-derived values and safe LOCAL
 defaults. Invalid overrides and non-loopback provider URLs fail; FLASK_DEBUG cannot
 enable Flask debugging. Missing configuration directs you to setup, then providers.
 PostgreSQL unavailability refuses startup with a credential-free message. Reachable

@@ -14,7 +14,7 @@ def redis_url():
     value = owned.get("TEST_REDIS_URL")
     if not value or owned.get("TEST_REDIS_DISPOSABLE") != "1":
         pytest.fail("Verified disposable TEST configuration is required.", pytrace=False)
-    from settings.base import redis_url as validate
+    from settings.redis import redis_url as validate
 
     try:
         validate(value)

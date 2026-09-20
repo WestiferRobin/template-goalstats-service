@@ -7,7 +7,11 @@ There are two human-facing files per service, both ignored and private:
 
 `make setup` creates missing files. Never copy an example or enter credentials in
 an IDE. The authoritative keys, defaults and validation live in
-`src/settings/environment.py`; application validation remains in `settings/base.py`.
+the concern modules `settings/core.py`, `settings/database.py`, and `settings/redis.py`.
+`settings/environment.py` owns private parsing, source selection and typed composition;
+`settings/base.py` contains only common errors, environment/context types and primitives.
+All bootstrap imports remain standard-library-only; PostgreSQL runtime URL validation
+loads SQLAlchemy only when an application configuration is constructed.
 Setup preserves valid existing bytes. Invalid files fail without credential logging.
 
 ## One machine configuration
@@ -52,3 +56,17 @@ Changing a password in configuration does not rotate an existing PostgreSQL volu
 Never delete a data volume to resolve a configuration mismatch.
 
 Generic dotenv discovery and production/cloud configuration are not part of this project.
+
+## Typed application settings
+
+`Settings` contains frozen `CoreSettings`, `DatabaseSettings`, and `RedisSettings`.
+The factory accepts this object, an explicit string mapping, or no argument.
+A supplied mapping never merges with ambient environment; no argument reads process
+configuration only. Neither path discovers machine files. Direct main alone calls
+`load_local()` and passes its validated object to the factory without reparsing.
+
+Generic factory configuration defaults OpenAPI to disabled; machine and TEST policy
+default it to enabled. Redis may be omitted/disabled, preserving database fallback.
+No settings singleton, dotenv loader, or pydantic-settings dependency is used.
+Pydantic defines API schemas; settings remain dependency-light validated dataclasses.
+Port probes and provider diagnostics belong to direct startup in `main.py`.

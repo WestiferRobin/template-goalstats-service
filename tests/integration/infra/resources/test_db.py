@@ -12,7 +12,7 @@ def test_ready_uses_real_postgresql_and_releases_connection(postgres_app):
 
 
 def test_real_postgresql_authentication_failure_is_safe(app_factory, postgres_config):
-    from settings.base import database_url
+    from settings.database import database_url
 
     url = database_url(postgres_config["DATABASE_URL"]).set(
         password="intentionally_invalid_password"

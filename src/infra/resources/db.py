@@ -10,15 +10,16 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import Action, Item
-from settings.base import Settings
+from models.action import Action
+from models.item import Item
+from settings.database import DatabaseSettings
 
 
 class Database:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: DatabaseSettings) -> None:
         # Engine construction is lazy: no connection or DDL occurs here.
         self.engine = create_engine(
-            settings.database_url,
+            settings.url,
             pool_pre_ping=True,
             pool_timeout=3,
             connect_args={"connect_timeout": 3, "options": "-c statement_timeout=3000"},

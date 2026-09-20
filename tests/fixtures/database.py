@@ -10,7 +10,8 @@ from sqlalchemy import text
 from test_ownership import owned_test_config
 
 from infra.resources.db import Database
-from settings.base import Settings, database_url
+from settings.database import database_url
+from settings.environment import load_application
 
 
 @pytest.fixture(scope="session")
@@ -40,7 +41,7 @@ def postgres_config() -> dict[str, str]:
             }.items()
         },
     }
-    db = Database(Settings.load(config))
+    db = Database(load_application(config).database)
     try:
         with db.engine.connect() as connection:
             assert connection.scalar(text("SELECT current_database()")) == url.database

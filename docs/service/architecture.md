@@ -4,11 +4,11 @@
 Route → Service → Repository → SQLAlchemy Session → PostgreSQL
               └→ Resource Cache → Redis JSON adapter → Redis
 
-ORM entity → immutable scalar result → Marshmallow response schema → HTTP
+ORM entity → frozen Pydantic response → explicit JSON serialization → HTTP
 ```
 
 The application factory explicitly constructs app-owned Engine/session and Redis
-pools. Routes obtain services through the Flask composition boundary. Services,
+pools. Routes obtain services through the typed `routers/dependencies.py` boundary. Services,
 repositories, and cache adapters do not depend on Flask globals. One requirements
 file and Python 3.12 remain the dependency/runtime contract.
 
@@ -33,8 +33,8 @@ Names are required, nonblank, and at most 200 characters. Names need not be uniq
 Item status is `active` or `archived`; new Items are active. Action type is `create`,
 `update`, or `delete`. Numeric and quoted-number enum values are rejected. IDs are
 UUIDs; input UUID zero is rejected. Malformed UUID paths are routing 404s, while
-invalid body UUIDs are validation 400s. Marshmallow fields convert to snake_case
-Python attributes, UUIDs, and StrEnums. Services also validate direct calls.
+invalid body UUIDs are validation 400s. Pydantic schemas convert to snake_case
+Python attributes, UUIDs, and StrEnums. Services receive validated command objects and validate ID arguments.
 
 Item JSON: `id`, `name`, `status`, `createdAt`, `updatedAt`.
 Action JSON: `id`, `itemId`, `name`, `type`, `createdAt`, `updatedAt`.
@@ -53,7 +53,7 @@ direct SQL writers must supply those values explicitly.
 
 Each service operation owns a fresh transaction/session. Repositories can query,
 add, delete, or flush, but do not commit. A successful context exit commits; any
-failure rolls back and closes. Results are built inside the session; cache writes
+failure rolls back and closes. Pydantic responses are built inside the session; cache writes
 or invalidation happen after successful exit. A failed flush/commit cannot trigger
 successful mutation-related cache changes.
 
@@ -100,40 +100,52 @@ session facility. Import
 and factory construction never connect, migrate, seed, or call external APIs.
 
 Safe Problem Details handlers own validation, domain, framework, and unexpected
-errors. flask-smorest documents resource schemas, enum values, validation statuses,
-canonical Location headers, and the shared Problem response. Meta paths are excluded.
+errors. flask-openapi3 generates OpenAPI 3.1.0 documenting resource schemas, enum values, validation statuses,
+canonical Location headers, and the Problem Details response. Meta paths are excluded.
 Swagger is served at `/swagger` with local pinned assets and the generated spec at
 `/swagger/v1/swagger.json`. LOCAL reloads source; DEV uses a non-root built Gunicorn
 image; TEST owns disposable providers. See [Development](development.md) for runtime
 identities and cleanup. No User or prediction domain is present.
 
-## Prizm-derived package placement
+## Package placement
 
-| Package | Responsibility |
+| Module/package | Responsibility |
 | --- | --- |
-| `main.py` | Flask factory, app-owned resources, registration, OpenAPI |
-| `composition.py` | Narrow Flask resource access and concrete service construction |
-| `routers/item`, `routers/infra` | Domain and operational HTTP adapters |
-| `schemas/item`, `schemas/action` | Immutable scalar results, request and response schemas |
-| `schemas/infra` | Problem Details contract |
-| `services/item` | Item/Action operations and direct-call validation |
-| `services/infra.py` | Readiness policy |
+| `main.py` | Factory, resource construction, registration, direct LOCAL startup diagnostics |
+| `routers/dependencies.py` | Typed Flask resource lookup and service construction |
+| `routers/item.py`, `routers/action.py` | Typed HTTP adapters; Action owns nested Item→Action operations |
+| `routers/health.py` | Native Flask health/readiness Blueprint |
+| `routers/errors.py` | HTTP error mapping and object-body request guard |
+| `routers/openapi.py` | Generated response metadata and native local Swagger Blueprint |
+| `schemas/item.py`, `schemas/action.py` | Pydantic request, response, path and list schemas |
+| `schemas/common.py`, `schemas/problem.py` | Shared constraints/timestamp codec and Problem Details |
+| `services/item.py`, `services/action.py` | Independent application operations and transaction ownership |
+| `services/readiness.py` | Provider readiness policy |
 | `infra/repositories` | Concrete session-bound SQLAlchemy queries and writes |
-| `infra/caches` | Domain cache identity and serialization |
+| `infra/caches` | Cache identity, Pydantic payload validation and serialization |
 | `infra/resources` | Engine/sessionmaker and Redis ownership, readiness, disposal |
-| `models/base.py` | The single authoritative SQLAlchemy Base and metadata |
-| `enums` | ItemStatus and ActionType reference values |
-| `settings` | Validated, instance-owned configuration |
-| `exceptions` | Framework-independent errors and Flask HTTP translation |
+| `models` | SQLAlchemy database models and one authoritative Base |
+| `enums` | ItemStatus and ActionType |
+| `settings` | Concern-based typed configuration with explicit private file loading |
+| `errors.py` | Safe application errors without HTTP status fields |
 
-All paths above are beneath `src/`. Dependencies flow from
-routers through services to concrete infrastructure and model/contract definitions.
-Services and infrastructure do not access Flask globals; composition is the
-framework boundary. Caches consume domain contracts rather than importing services.
+All paths are beneath flat `src/`. Package markers are empty; mapped classes are
+imported explicitly wherever metadata registration is required. There is no `src`
+package, service-name package, global settings singleton or dependency-injection framework.
 
-Prizm's domain router grouping maps to Flask Blueprints. Pydantic contracts map
-to Marshmallow and immutable scalar records. FastAPI dependencies map to explicit
-composition. Async lifespan machinery maps to app-owned resources and explicit
-owner cleanup. Gunicorn serves WSGI. There are no generic provider registries,
-authentication platform, queues, gRPC, async sessions, or dynamic router discovery.
-Item and Action remain example domains, not a User-service implementation.
+Pydantic commands reject unknown fields and internal snake_case HTTP aliases. Services
+construct frozen responses from ORM attributes before closing the transaction.
+Routes explicitly serialize responses with `model_dump(mode="json", by_alias=True)`.
+Cache adapters use the same response schemas and preserve UTC `+00:00` timestamps.
+They do not import services. Services never import Flask.
+
+Request validation produces safe 400 responses through the extension callback.
+A small native guard refuses malformed/non-object/non-JSON bodies before binding.
+Pydantic errors constructing server output remain 500 errors, never request errors.
+The OpenAPI document is generated from these schemas; there is no duplicate YAML.
+The extension's automatic UI is disabled. Native routes serve pinned local Swagger
+assets, and docs-disabled mode exposes neither the UI, assets nor document.
+
+Prizm's concern-based settings separation is retained without its platform features,
+process-wide dotenv mutation or cached settings. Gunicorn remains WSGI. No async
+sessions, authentication platform, queues, gRPC or provider registries are introduced.

@@ -1,30 +1,48 @@
-"""Canonical private machine configuration and endpoint-free TEST policy (stdlib only)."""
+"""Explicit private sources and typed composition; never a global settings singleton."""
 
 import os
-import re
 import stat
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
-SERVICE = "goalstats-template-py"
-DATABASE = "goalstats_template_py"
-POLICY_DEFAULTS = {"LOG_LEVEL": "INFO", "OPENAPI_ENABLED": "true", "CACHE_TTL_SECONDS": "300"}
-PORT_DEFAULTS = {
-    "HOST_APP_PORT": "5300",
-    "LOCAL_APP_PORT": "5100",
-    "DEV_APP_PORT": "5200",
-    "LOCAL_POSTGRES_PORT": "55432",
-    "LOCAL_REDIS_PORT": "56379",
-}
-LOCAL_KEYS = (
-    frozenset(PORT_DEFAULTS)
-    | frozenset(POLICY_DEFAULTS)
-    | {"POSTGRES_PASSWORD", "DEV_POSTGRES_PASSWORD"}
+from settings.base import ConfigurationError, ExecutionContext, boolean, loopback, port
+from settings.core import POLICY_DEFAULTS as CORE_POLICY
+from settings.core import PORT_DEFAULTS as CORE_PORTS
+from settings.core import SERVICE as SERVICE
+from settings.core import CoreSettings, environment, log_level
+from settings.database import DATABASE as DATABASE
+from settings.database import (
+    PASSWORD_KEYS,
+    DatabaseSettings,
+    credentials,
+    database_url,
+    derive_database_url,
 )
+from settings.database import PORT_DEFAULTS as DB_PORTS
+from settings.redis import POLICY_DEFAULTS as REDIS_POLICY
+from settings.redis import PORT_DEFAULTS as REDIS_PORTS
+from settings.redis import RedisSettings, cache_ttl, default_prefix, derive_redis_url
 
-
-class EnvironmentError(ValueError):
-    """Credential-free configuration failure."""
+# These mappings are views of concern-owned defaults, also used by stdlib tooling.
+POLICY_DEFAULTS = {**CORE_POLICY, **REDIS_POLICY}
+PORT_DEFAULTS = {**CORE_PORTS, **DB_PORTS, **REDIS_PORTS}
+LOCAL_KEYS = frozenset(PORT_DEFAULTS) | frozenset(POLICY_DEFAULTS) | PASSWORD_KEYS
+LOCAL_FILE = Path(__file__).resolve().parents[2] / ".env.local"
+DIRECT_KEYS = frozenset(
+    {
+        "APP_ENV",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CACHE_KEY_PREFIX",
+        "CACHE_TTL_SECONDS",
+        "LOG_LEVEL",
+        "OPENAPI_ENABLED",
+        "HOST_APP_PORT",
+        "FLASK_DEBUG",
+    }
+)
 
 
 def read_private(path: Path, keys: frozenset[str]) -> dict[str, str]:
@@ -33,17 +51,17 @@ def read_private(path: Path, keys: frozenset[str]) -> dict[str, str]:
         with os.fdopen(fd, encoding="utf-8") as stream:
             info = os.fstat(stream.fileno())
             if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-                raise EnvironmentError(
+                raise ConfigurationError(
                     f"{path.name}: configuration must be a private regular file owned by this user."
                 )
             content = stream.read()
     except FileNotFoundError:
         kind = "LOCAL" if path.name == ".env.local" else "TEST"
-        raise EnvironmentError(
+        raise ConfigurationError(
             f"{path.name}: {kind} configuration is missing. Run make setup, then make providers."
         ) from None
     except (OSError, UnicodeError):
-        raise EnvironmentError(
+        raise ConfigurationError(
             f"{path.name}: cannot read private configuration; symlinks are forbidden."
         ) from None
     result: dict[str, str] = {}
@@ -52,43 +70,16 @@ def read_private(path: Path, keys: frozenset[str]) -> dict[str, str]:
             continue
         key, separator, value = line.partition("=")
         if not separator or key not in keys or key in result or "\x00" in value:
-            raise EnvironmentError(
+            raise ConfigurationError(
                 f"{path.name}:{number}: configuration requires unique supported KEY=value lines."
             )
         result[key] = value
     return result
 
 
-def log_level(value: str) -> str:
-    level = value.strip().upper()
-    if level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
-        raise EnvironmentError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR or CRITICAL.")
-    return level
-
-
-def boolean(value: str) -> bool:
-    match value.strip().lower():
-        case "true" | "1":
-            return True
-        case "false" | "0":
-            return False
-        case _:
-            raise EnvironmentError("OPENAPI_ENABLED must be true, false, 1 or 0.")
-
-
-def cache_ttl(value: str) -> int:
-    try:
-        result = int(value)
-        if not 1 <= result <= 86400:
-            raise ValueError
-        return result
-    except ValueError:
-        raise EnvironmentError("CACHE_TTL_SECONDS must be an integer from 1 to 86400.") from None
-
-
 def policy(values: Mapping[str, str]) -> dict[str, str]:
     if set(values) - POLICY_DEFAULTS.keys():
-        raise EnvironmentError(
+        raise ConfigurationError(
             "TEST policy contains unsupported keys; provider configuration is forbidden."
         )
     result = {**POLICY_DEFAULTS, **values}
@@ -105,13 +96,13 @@ def test_policy(root: Path) -> dict[str, str]:
     )
     try:
         return policy(values)
-    except EnvironmentError as exc:
-        raise EnvironmentError(f"{path.name}: {exc}") from None
+    except ConfigurationError as exc:
+        raise ConfigurationError(f"{path.name}: {exc}") from None
 
 
 def machine(values: Mapping[str, str]) -> dict[str, str]:
     if set(values) - LOCAL_KEYS:
-        raise EnvironmentError(
+        raise ConfigurationError(
             "Unsupported LOCAL machine key; run make setup to migrate legacy configuration."
         )
     result = {
@@ -119,17 +110,11 @@ def machine(values: Mapping[str, str]) -> dict[str, str]:
         **policy({k: v for k, v in values.items() if k in POLICY_DEFAULTS}),
         **values,
     }
-    for key in ("POSTGRES_PASSWORD", "DEV_POSTGRES_PASSWORD"):
-        if not re.fullmatch(r"[a-zA-Z0-9_-]{16,128}", result.get(key, "")):
-            raise EnvironmentError(
-                f"{key} must be 16–128 URL-safe characters; preserve existing credentials."
-            )
+    credentials(result)
     for key in PORT_DEFAULTS:
-        value = result[key]
-        if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 65535:
-            raise EnvironmentError(f"{key} must be a valid port number.")
+        port(result[key], key)
     if len({int(result[k]) for k in PORT_DEFAULTS}) != len(PORT_DEFAULTS):
-        raise EnvironmentError("Machine app/provider ports must be distinct.")
+        raise ConfigurationError("Machine app/provider ports must be distinct.")
     return result
 
 
@@ -137,24 +122,73 @@ def load_machine(path: Path) -> dict[str, str]:
     values = read_private(path, LOCAL_KEYS)
     try:
         return machine(values)
-    except EnvironmentError as exc:
-        raise EnvironmentError(f"{path.name}: {exc}") from None
+    except ConfigurationError as exc:
+        raise ConfigurationError(f"{path.name}: {exc}") from None
 
 
 def application(values: Mapping[str, str], mode: str, *, host: bool = False) -> dict[str, str]:
     if mode not in {"local", "dev"} or (host and mode != "local"):
-        raise EnvironmentError(
+        raise ConfigurationError(
             "Machine configuration supports LOCAL/DEV only; host execution is LOCAL."
         )
-    password = values["POSTGRES_PASSWORD" if mode == "local" else "DEV_POSTGRES_PASSWORD"]
-    pg = "127.0.0.1:" + values["LOCAL_POSTGRES_PORT"] if host else "postgres:5432"
-    redis = "127.0.0.1:" + values["LOCAL_REDIS_PORT"] if host else "redis:6379"
+    context: ExecutionContext = "host" if host else "container"
     return {
         **policy({k: v for k, v in values.items() if k in POLICY_DEFAULTS}),
         "APP_ENV": mode,
-        "DATABASE_URL": f"postgresql+psycopg://goalstats:{password}@{pg}/{DATABASE}_{mode}",
-        "REDIS_URL": f"redis://{redis}/0",
-        "CACHE_KEY_PREFIX": f"{SERVICE}:{mode}:v1",
+        "DATABASE_URL": derive_database_url(values, mode, context=context),
+        "REDIS_URL": derive_redis_url(values, context=context),
+        "CACHE_KEY_PREFIX": default_prefix(mode),
         "HOST_APP_PORT": values["HOST_APP_PORT"],
         "FLASK_DEBUG": "0",
     }
+
+
+@dataclass(frozen=True)
+class Settings:
+    core: CoreSettings
+    database: DatabaseSettings
+    redis: RedisSettings
+
+    def __post_init__(self) -> None:
+        if not (
+            isinstance(self.core, CoreSettings)
+            and isinstance(self.database, DatabaseSettings)
+            and isinstance(self.redis, RedisSettings)
+        ):
+            raise ConfigurationError("Settings require validated core, database and Redis groups.")
+
+
+def load_application(values: Mapping[str, str] | None = None) -> Settings:
+    source = os.environ if values is None else values
+    mode = environment(source.get("APP_ENV", "local"))
+    return Settings(
+        CoreSettings(
+            mode,
+            log_level(source.get("LOG_LEVEL", CORE_POLICY["LOG_LEVEL"])),
+            boolean(source.get("OPENAPI_ENABLED", "false")),
+            port(source.get("HOST_APP_PORT", CORE_PORTS["HOST_APP_PORT"]), "HOST_APP_PORT"),
+        ),
+        DatabaseSettings(database_url(source.get("DATABASE_URL", ""))),
+        RedisSettings(
+            source.get("REDIS_URL") or None,
+            source.get("CACHE_KEY_PREFIX", default_prefix(mode)),
+            cache_ttl(source.get("CACHE_TTL_SECONDS", REDIS_POLICY["CACHE_TTL_SECONDS"])),
+        ),
+    )
+
+
+def load_local(environ: Mapping[str, str] | None = None) -> Settings:
+    source = os.environ if environ is None else environ
+    if "APP_ENV" in source and source["APP_ENV"].strip().lower() != "local":
+        raise ConfigurationError(
+            "Direct execution supports LOCAL only. Remove the conflicting APP_ENV setting."
+        )
+    values = application(load_machine(LOCAL_FILE), "local", host=True)
+    values.update({key: source[key] for key in DIRECT_KEYS if key in source})
+    values.update(APP_ENV="local", FLASK_DEBUG="0")
+    result = load_application(values)
+    if not loopback(result.database.url.host):
+        raise ConfigurationError("DATABASE_URL for LOCAL host development must use loopback.")
+    if result.redis.url and not loopback(urlsplit(result.redis.url).hostname):
+        raise ConfigurationError("REDIS_URL for LOCAL host development must use loopback.")
+    return result

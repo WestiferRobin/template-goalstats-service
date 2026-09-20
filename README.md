@@ -1,7 +1,7 @@
 # GoalStats Flask service template
 
 Python 3.12, Flask/Gunicorn, PostgreSQL/SQLAlchemy/Alembic, Redis,
-Marshmallow/flask-smorest and pytest. Item + Action are the reference domain.
+Pydantic/flask-openapi3 and pytest. Item + Action are the reference domain.
 Flat `src/`; factory: `main:create_app()`; one pinned `requirements.txt`.
 
 ## First time: host / IDE development

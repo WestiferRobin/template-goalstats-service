@@ -14,19 +14,21 @@ def test_exact_route_and_openapi_resource_contract(app):
         for method in methods:
             response = operations[method]["responses"]
             assert "default" in response
-            assert response["default"]["$ref"] == "#/components/responses/Problem"
+            assert (
+                response["default"]["content"]["application/problem+json"]["schema"]["$ref"]
+                == "#/components/schemas/ProblemDetails"
+            )
         if "post" in methods:
             assert "Location" in operations["post"]["responses"]["201"]["headers"]
             assert "400" in operations["post"]["responses"]
     schemas = spec["components"]["schemas"]
-    assert schemas["ItemResponse"]["properties"]["status"]["enum"] == ["active", "archived"]
-    assert schemas["ActionResponse"]["properties"]["type"]["enum"] == ["create", "update", "delete"]
-    assert "itemId" not in schemas["UpdateAction"]["properties"]
-    assert "itemId" not in schemas["NestedAction"]["properties"]
-    assert "itemId" in schemas["CreateAction"]["required"]
-    assert schemas["CreateItem"]["additionalProperties"] is False
-    assert schemas["CreateItem"]["properties"]["name"]["maxLength"] == 200
-    assert schemas["CreateAction"]["properties"]["name"]["maxLength"] == 200
+    assert schemas["ItemStatus"]["enum"] == ["active", "archived"]
+    assert schemas["ActionType"]["enum"] == ["create", "update", "delete"]
+    assert "itemId" not in schemas["ActionWrite"]["properties"]
+    assert "itemId" in schemas["ActionCreate"]["required"]
+    assert schemas["ItemCreate"]["additionalProperties"] is False
+    assert schemas["ItemCreate"]["properties"]["name"]["maxLength"] == 200
+    assert schemas["ActionCreate"]["properties"]["name"]["maxLength"] == 200
     assert schemas["ItemResponse"]["properties"]["id"]["format"] == "uuid"
     assert schemas["ActionResponse"]["properties"]["createdAt"]["format"] == "date-time"
     # A Blueprint registers one Rule per view; merge methods for the exact route surface.
@@ -60,3 +62,22 @@ def test_disabling_openapi_disables_ui_assets_and_spec(app_factory, explicit_con
     client = app_factory({**explicit_config, "OPENAPI_ENABLED": "false"}).test_client()
     for path in ("/swagger", "/swagger/v1/swagger.json", "/swagger-assets/swagger-ui.css"):
         assert client.get(path).status_code == 404
+
+
+def test_all_generated_schema_references_resolve(app):
+    spec = app.test_client().get("/swagger/v1/swagger.json").json
+
+    def visit(value):
+        if isinstance(value, dict):
+            if "$ref" in value:
+                target = spec
+                assert value["$ref"].startswith("#/")
+                for part in value["$ref"][2:].split("/"):
+                    target = target[part.replace("~1", "/").replace("~0", "~")]
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(spec)

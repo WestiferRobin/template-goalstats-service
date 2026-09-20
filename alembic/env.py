@@ -3,17 +3,18 @@
 from alembic import context
 from sqlalchemy.engine import Connection
 
-import models  # noqa: F401 — populate migration metadata
+import models.action  # noqa: F401 — populate migration metadata
+import models.item  # noqa: F401
 from infra.resources.db import Database
 from models.base import Base
-from settings.base import Settings
+from settings.environment import load_application
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=Settings.load().database_url,
+        url=load_application().database.url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -30,7 +31,7 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
         return
-    database = Database(Settings.load())
+    database = Database(load_application().database)
     try:
         with database.engine.connect() as connection:
             context.configure(

@@ -151,6 +151,6 @@ def test_doctor_checks_test_policy_before_port_diagnosis(monkeypatch, tmp_path):
     path = tmp_path / ".env.test"
     path.write_text("DATABASE_URL=private-value\n")
     path.chmod(0o600)
-    with pytest.raises(workflow.schema.EnvironmentError, match=r"\.env.test:1") as error:
+    with pytest.raises(workflow.schema.ConfigurationError, match=r"\.env.test:1") as error:
         workflow.doctor()
     assert "private-value" not in str(error.value)

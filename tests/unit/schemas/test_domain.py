@@ -1,85 +1,100 @@
 from uuid import UUID, uuid4
 
 import pytest
-from marshmallow import ValidationError
+from pydantic import ValidationError
 
 from enums.action import ActionType
 from enums.item import ItemStatus
-from schemas.action.request import (
-    CreateActionSchema,
-    NestedActionSchema,
-    UpdateActionSchema,
-)
-from schemas.item.request import CreateItemSchema, UpdateItemSchema
-from settings.base import ConfigurationError, Settings
+from schemas.action import ActionCreate, ActionWrite
+from schemas.item import ItemCreate, ItemUpdate
 
 
 @pytest.mark.parametrize(
     "schema,body",
     [
-        (CreateItemSchema, {}),
-        (CreateItemSchema, {"name": None}),
-        (CreateItemSchema, {"name": ""}),
-        (CreateItemSchema, {"name": " \t\n"}),
-        (CreateItemSchema, {"name": "x" * 201}),
-        (CreateItemSchema, {"name": 12}),
-        (CreateItemSchema, {"name": "x", "extra": 1}),
-        (UpdateItemSchema, {"name": "x"}),
-        (UpdateItemSchema, {"name": "x", "status": "0"}),
-        (UpdateItemSchema, {"name": "x", "status": 0}),
-        (UpdateItemSchema, {"name": "x", "status": "invalid"}),
-        (CreateActionSchema, {"name": "x", "type": "create"}),
-        (CreateActionSchema, {"name": "x", "type": "create", "itemId": "bad"}),
-        (CreateActionSchema, {"name": "x", "type": "create", "itemId": str(UUID(int=0))}),
-        (NestedActionSchema, {"name": "x", "type": "create", "itemId": str(uuid4())}),
-        (UpdateActionSchema, {"name": "x", "type": "delete", "itemId": str(uuid4())}),
-        (NestedActionSchema, {"name": "x", "type": "0"}),
-        (NestedActionSchema, {"name": "x", "type": False}),
+        (ItemCreate, {}),
+        (ItemCreate, {"name": None}),
+        (ItemCreate, {"name": ""}),
+        (ItemCreate, {"name": " \t\n"}),
+        (ItemCreate, {"name": "x" * 201}),
+        (ItemCreate, {"name": 12}),
+        (ItemCreate, {"name": "x", "extra": 1}),
+        (ItemUpdate, {"name": "x"}),
+        (ItemUpdate, {"name": "x", "status": "0"}),
+        (ItemUpdate, {"name": "x", "status": 0}),
+        (ItemUpdate, {"name": "x", "status": "invalid"}),
+        (ActionCreate, {"name": "x", "type": "create"}),
+        (ActionCreate, {"name": "x", "type": "create", "itemId": "bad"}),
+        (ActionCreate, {"name": "x", "type": "create", "itemId": str(UUID(int=0))}),
+        (ActionWrite, {"name": "x", "type": "create", "itemId": str(uuid4())}),
+        (ActionWrite, {"name": "x", "type": "delete", "itemId": str(uuid4())}),
+        (ActionWrite, {"name": "x", "type": "0"}),
+        (ActionWrite, {"name": "x", "type": False}),
     ],
 )
 def test_request_contract_rejects_invalid_values(schema, body):
     with pytest.raises(ValidationError):
-        schema().load(body)
+        schema.model_validate(body)
 
 
 def test_valid_schemas_return_typed_internal_values():
     identity = uuid4()
-    data = CreateActionSchema().load({"itemId": str(identity), "name": "x" * 200, "type": "update"})
-    assert data == {"item_id": identity, "name": "x" * 200, "action_type": ActionType.UPDATE}
+    data = ActionCreate.model_validate(
+        {"itemId": str(identity), "name": "x" * 200, "type": "update"}
+    )
+    assert data.model_dump() == {
+        "item_id": identity,
+        "name": "x" * 200,
+        "action_type": ActionType.UPDATE,
+    }
     assert (
-        UpdateItemSchema().load({"name": "example", "status": "archived"})["status"]
+        ItemUpdate.model_validate({"name": "example", "status": "archived"}).status
         is ItemStatus.ARCHIVED
     )
     assert [x.value for x in ItemStatus] == ["active", "archived"]
     assert [x.value for x in ActionType] == ["create", "update", "delete"]
 
 
+def test_responses_are_detached_frozen_and_preserve_wire_timestamps():
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from schemas.action import ActionResponse
+    from schemas.item import ItemListResponse, ItemResponse
+
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    identity = UUID(int=1)
+    row = SimpleNamespace(
+        id=identity, name=" x ", status=ItemStatus.ACTIVE, created_at=now, updated_at=now
+    )
+    result = ItemResponse.model_validate(row, by_name=True, by_alias=False)
+    expected = {
+        "id": str(identity),
+        "name": " x ",
+        "status": "active",
+        "createdAt": "2026-01-01T00:00:00+00:00",
+        "updatedAt": "2026-01-01T00:00:00+00:00",
+    }
+    assert result.model_dump(mode="json", by_alias=True) == expected
+    assert ItemListResponse([result]).model_dump(mode="json", by_alias=True) == [expected]
+    with pytest.raises(ValidationError):
+        result.name = "changed"
+    with pytest.raises(ValidationError):
+        ItemResponse.model_validate({**expected, "createdAt": "2026-01-01T00:00:00"})
+    # Action's payload contains no Item status and retains public aliases.
+    payload = {k: v for k, v in expected.items() if k != "status"}
+    payload.update(itemId=str(identity), type="create")
+    action = ActionResponse.model_validate(payload)
+    assert action.model_dump(mode="json", by_alias=True) == payload
+
+
 @pytest.mark.parametrize(
-    "key,value",
+    "body",
     [
-        ("REDIS_URL", "http://private@host/0"),
-        ("REDIS_URL", "redis://host/abc"),
-        ("REDIS_URL", "redis://host/0?socket_timeout=999"),
-        ("REDIS_URL", "redis://host:99999/0"),
-        ("CACHE_KEY_PREFIX", "bad prefix"),
-        ("CACHE_KEY_PREFIX", ""),
-        ("CACHE_TTL_SECONDS", "0"),
-        ("CACHE_TTL_SECONDS", "x"),
-        ("CACHE_TTL_SECONDS", "86401"),
+        {"item_id": str(UUID(int=1)), "name": "x", "type": "create"},
+        {"itemId": str(UUID(int=1)), "name": "x", "action_type": "create"},
     ],
 )
-def test_cache_settings_fail_safely(explicit_config, key, value):
-    with pytest.raises(ConfigurationError) as error:
-        Settings.load({**explicit_config, key: value})
-    assert key in str(error.value)
-    assert "private" not in str(error.value)
-
-
-def test_cache_settings_defaults_and_explicit_isolation(explicit_config, monkeypatch):
-    monkeypatch.setenv("REDIS_URL", "invalid")
-    settings = Settings.load(explicit_config)
-    assert settings.redis_url is None
-    assert settings.cache_key_prefix == "goalstats-template-py:test:v1"
-    assert settings.cache_ttl_seconds == 300
-    settings = Settings.load({**explicit_config, "REDIS_URL": "redis://:private@localhost/0"})
-    assert "private" not in repr(settings)
+def test_http_contracts_never_accept_internal_aliases(body):
+    with pytest.raises(ValidationError):
+        ActionCreate.model_validate(body)

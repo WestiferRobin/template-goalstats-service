@@ -105,7 +105,7 @@ def test_redis_permission_outage_database_fallback_and_recovery(
 ):
     admin = redis_app.extensions["goalstats_cache"].client
     username, password = "goalstats_test_" + uuid4().hex, uuid4().hex
-    prefix = redis_app.extensions["goalstats_settings"].cache_key_prefix
+    prefix = redis_app.extensions["goalstats_settings"].redis.cache_key_prefix
     admin.execute_command(
         "ACL",
         "SETUSER",

@@ -2,7 +2,7 @@
 
 This is the canonical Flask Item + Action reference service. Its relevant package,
 fixture, Make, script, and documentation conventions follow Prizm's Python template.
-Flask Blueprints, explicit composition, Marshmallow, synchronous resources, and
+Flask Blueprints, explicit resource construction, Pydantic, synchronous resources, and
 Gunicorn intentionally replace FastAPI-specific mechanics.
 
 Template-owned conventions include package responsibilities, configuration,
@@ -50,9 +50,9 @@ is included. PostgreSQL and Redis are the only runtime providers.
 
 ## Flat Python execution contract
 
-`src/main.py` exports `create_app`; `src/composition.py` wires concrete resources
-and services. Modules import directly from `enums`, `exceptions`, `settings`,
-`models`, `schemas`, `infra`, `services`, `routers`, and `composition`. There is no
+`src/main.py` exports `create_app`; `src/routers/dependencies.py` provides typed resource lookup
+and lightweight service construction. Modules import directly from `enums`, `errors`, `settings`,
+`models`, `schemas`, `infra`, `services`, and `routers`. There is no
 intermediate service package and no `src` package to import.
 
 Pytest declares `pythonpath = src scripts`; Alembic uses its configuration-relative
@@ -86,8 +86,8 @@ manifest-based TEST ownership and portable IDE launch. Reject all real env files
 internal state from payloads; generated services create their own `.env.local` and
 `.env.test` through setup. Identity literals are transformed only in reviewed paths.
 
-Direct `src/main.py` means LOCAL host development. The service-neutral
-`src/settings/host.py` loader belongs only to that entrypoint; the factory, Docker,
-Alembic and tests remain independent. Portable VS Code app launch must not inject
+Direct `src/main.py` means LOCAL host development. The `load_local()` helper in
+`src/settings/environment.py` belongs only to that entrypoint; factory and Alembic
+configuration use `load_application()` without reading machine files. Portable VS Code app launch must not inject
 an env file; PyCharm Python script Run needs no environment profile. Scaffold guards
 must validate this shared loader and preserve its source bytes without identity rewrites.

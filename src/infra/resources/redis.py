@@ -9,22 +9,22 @@ from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 from redis.retry import Retry
 
-from settings.base import Settings
+from settings.redis import RedisSettings
 
 
 class RedisCache:
-    def __init__(self, settings: Settings, logger: logging.Logger) -> None:
+    def __init__(self, settings: RedisSettings, logger: logging.Logger) -> None:
         self.logger = logger
         self.client: Redis | None = (
             Redis.from_url(
-                settings.redis_url,
+                settings.url,
                 socket_connect_timeout=1,
                 socket_timeout=1,
                 retry=Retry(NoBackoff(), 0),
                 max_connections=10,
                 decode_responses=False,
             )
-            if settings.redis_url
+            if settings.url
             else None
         )
 

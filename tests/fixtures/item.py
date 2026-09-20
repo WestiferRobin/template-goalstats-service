@@ -12,9 +12,10 @@ from infra.caches.action import ActionCache
 from infra.caches.item import ItemCache
 from infra.repositories.action import ActionRepository
 from infra.repositories.item import ItemRepository
-from models import Action, Item
-from services.item.action import ActionService
-from services.item.item import ItemService
+from models.action import Action
+from models.item import Item
+from services.action import ActionService
+from services.item import ItemService
 
 
 @dataclass

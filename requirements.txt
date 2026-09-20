@@ -1,12 +1,10 @@
 # Python 3.12; direct and transitive dependencies pinned in ONE file.
 alembic==1.20.0
-apispec==6.10.0
 ast_serialize==0.11.2
 blinker==1.9.0
 click==8.5.0
 coverage==7.16.1
 Flask==3.1.3
-flask-smorest==0.47.0
 gunicorn==26.2.0
 iniconfig==2.3.0
 itsdangerous==2.2.0
@@ -14,7 +12,6 @@ Jinja2==3.1.6
 librt==0.15.0
 Mako==1.4.1
 MarkupSafe==3.0.3
-marshmallow==4.3.1
 mypy==2.3.1
 mypy_extensions==1.1.0
 packaging==26.3
@@ -30,6 +27,10 @@ ruff==0.16.7
 SQLAlchemy==2.0.53
 swagger_ui_bundle==1.1.0
 typing_extensions==4.16.0
-webargs==8.7.1
 Werkzeug==3.1.8
 greenlet==3.5.6
+annotated-types==0.8.0
+flask-openapi3==4.3.2
+pydantic==2.13.5
+pydantic-core==2.46.5
+typing-inspection==0.4.4
