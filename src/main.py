@@ -3,6 +3,25 @@
 import logging
 import sys
 from collections.abc import Mapping
+from importlib.util import find_spec
+
+if __name__ == "__main__":
+    if sys.version_info[:2] != (3, 12):
+        sys.exit("Direct development requires Python 3.12. Run make setup and select .venv.")
+    if any(
+        find_spec(name) is None
+        for name in (
+            "flask",
+            "flask_smorest",
+            "sqlalchemy",
+            "psycopg",
+            "redis",
+            "swagger_ui_bundle",
+        )
+    ):
+        sys.exit(
+            "Application dependencies are missing. Run make setup and select .venv/bin/python."
+        )
 
 from flask import Flask, Response, send_from_directory
 from flask.logging import default_handler

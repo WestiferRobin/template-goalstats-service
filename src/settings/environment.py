@@ -34,24 +34,27 @@ def read_private(path: Path, keys: frozenset[str]) -> dict[str, str]:
             info = os.fstat(stream.fileno())
             if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
                 raise EnvironmentError(
-                    "Configuration must be a private regular file owned by this user."
+                    f"{path.name}: configuration must be a private regular file owned by this user."
                 )
             content = stream.read()
     except FileNotFoundError:
+        kind = "LOCAL" if path.name == ".env.local" else "TEST"
         raise EnvironmentError(
-            "LOCAL configuration is missing. Run make setup, then make providers ENV=local."
+            f"{path.name}: {kind} configuration is missing. Run make setup, then make providers."
         ) from None
     except (OSError, UnicodeError):
         raise EnvironmentError(
-            "Cannot read private configuration; symlinks are forbidden."
+            f"{path.name}: cannot read private configuration; symlinks are forbidden."
         ) from None
     result: dict[str, str] = {}
-    for line in content.splitlines():
+    for number, line in enumerate(content.splitlines(), 1):
         if not line or line.startswith("#"):
             continue
         key, separator, value = line.partition("=")
         if not separator or key not in keys or key in result or "\x00" in value:
-            raise EnvironmentError("Configuration requires unique supported KEY=value lines.")
+            raise EnvironmentError(
+                f"{path.name}:{number}: configuration requires unique supported KEY=value lines."
+            )
         result[key] = value
     return result
 
@@ -97,9 +100,13 @@ def policy(values: Mapping[str, str]) -> dict[str, str]:
 
 def test_policy(root: Path) -> dict[str, str]:
     path = root / ".env.test"
-    return policy(
+    values = (
         read_private(path, frozenset(POLICY_DEFAULTS)) if path.exists() or path.is_symlink() else {}
     )
+    try:
+        return policy(values)
+    except EnvironmentError as exc:
+        raise EnvironmentError(f"{path.name}: {exc}") from None
 
 
 def machine(values: Mapping[str, str]) -> dict[str, str]:
@@ -127,7 +134,11 @@ def machine(values: Mapping[str, str]) -> dict[str, str]:
 
 
 def load_machine(path: Path) -> dict[str, str]:
-    return machine(read_private(path, LOCAL_KEYS))
+    values = read_private(path, LOCAL_KEYS)
+    try:
+        return machine(values)
+    except EnvironmentError as exc:
+        raise EnvironmentError(f"{path.name}: {exc}") from None
 
 
 def application(values: Mapping[str, str], mode: str, *, host: bool = False) -> dict[str, str]:

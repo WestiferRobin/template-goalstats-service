@@ -26,7 +26,7 @@ application suite passed falsely. Normal application/smoke results are checked
 separately. No global Docker prune is used.
 
 The GitHub Actions workflow uses Python 3.12 on Ubuntu, runs `make setup`,
-`make doctor`, and `make certify`. Docker installs the single requirements file;
+`make doctor`, and `make certify`. Setup installs the single requirements file in `.venv`; Docker installs the same pins;
 YAML does not duplicate tests or provider orchestration. No secrets or deployment
 credentials are needed. All validation providers belong to disposable projects.
 The job has a bounded timeout; hosted-runner teardown handles machine-level loss.
@@ -41,9 +41,8 @@ commit, push, or certify a future published SHA.
 From a fresh candidate containing only intended files:
 
 ```sh
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip check
+make setup
+make doctor
 make certify-host PYTHON=.venv/bin/python
 make check
 make unit
@@ -69,9 +68,9 @@ cleanup, and before/after resource equality (except retained build images/cache)
 Provider-free tooling tests exercise tampered ownership and unsafe env-file cases.
 No business schema or migration history is changed.
 
-Automated success means **READY FOR MANUAL IDE VERIFICATION**. Prompt 3 must exercise
-actual PyCharm Run/Debug and VS Code F5, verify breakpoints at `main`, router, service,
-repository and cache, and exercise IDE discovery and individual test selection.
+Automated success means **READY FOR MANUAL IDE VERIFICATION**. Manual IDE acceptance
+uses PyCharm Run/Debug and VS Code F5, breakpoints at `main`, router, service,
+repository and cache, and IDE discovery and individual test selection.
 Do not report actual IDE debugger/discovery acceptance from CLI tests alone.
 
 Zero-friction startup acceptance uses an exact disposable source copy and its actual
@@ -80,3 +79,7 @@ launches bare main with application variables removed, from root and `src/` cwd.
 Unit tests cover private-file parsing, contradictory modes, precedence, loopback,
 provider diagnostics, occupied ports, and factory/import isolation. Actual IDE Run
 must use no env-file profile; command-line acceptance never implies breakpoint acceptance.
+
+Certification configuration bootstrap uses only an empty disposable directory, never
+developer LOCAL/DEV volume identities. Existing developer stacks and data may remain
+present during certification. Normal setup retains its strict existing-volume checks.

@@ -94,7 +94,10 @@ def test_suite_selection_and_cleanup(monkeypatch, mode, expected):
 
 
 def test_setup_preserves_existing_private_configuration(monkeypatch, tmp_path):
+    import python_environment
     import workflow
+
+    monkeypatch.setattr(python_environment, "bootstrap", lambda root: None)
 
     monkeypatch.setattr(workflow.shutil, "which", lambda tool: tool)
     monkeypatch.setattr(

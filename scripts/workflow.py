@@ -21,29 +21,33 @@ from environment_setup import setup_files
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "goalstats-template-py:tooling"
-HELP = """GoalStats Flask — LOCAL reloads mounted source; DEV runs built Gunicorn.
-SETUP     make doctor                Read-only prerequisite and setup diagnosis
-          make setup                 Create/migrate private .env.local + .env.test
-          make build ENV=local|dev   Build the selected runtime
-RUNTIME   make run ENV=local|dev     Start and wait for exactly 200 Healthy
-IDE       make providers ENV=local  Healthy LOCAL providers + canonical config; no app/migration
-          make providers-stop ENV=local Stop providers only; preserve data
-          make test-providers        Foreground owned disposable host TEST session
-          make certify-host PYTHON=.venv/bin/python  Automated host acceptance (no IDE UI)
-          make stop ENV=local|dev    Remove selected containers/network; retain DB volume
-          make logs ENV=local|dev    Show recent selected-stack logs
-DATABASE  make migrate ENV=local|dev Upgrade selected database to Alembic head
-          make migration MESSAGE=\"description\"  Generate LOCAL revision for review
-          make migration-check ENV=local|dev     Check selected database model drift
-TEST      make unit                  Provider-independent unit suite
-          make integration           Isolated TEST providers and integration suite
-          make test                  Unit + integration once, isolated TEST providers
-          make coverage              Same full suite with terminal coverage
-          make smoke                 Disposable built DEV HTTP smoke
-          make certify               Quality, tooling, coverage, built smoke, lifecycle checks
-          make tooling               Workflow tests only (no providers)
-QUALITY   make check                 Ruff lint/format check and strict mypy
-Default ENV=local. Unknown environments are refused. No command auto-commits.
+HELP = """GoalStats Flask — host/IDE first; Python 3.12 + Make + running Docker/Compose required.
+SETUP     make setup                 Create/reuse .venv, install pins, prepare private env files
+          make doctor                Read-only Python/dependencies/config/Docker/port diagnosis
+HOST      make providers             Healthy LOCAL PostgreSQL + Redis; no app/migration
+          .venv/bin/python src/main.py  Or IDE Run; requires providers + migrated schema
+DATABASE  make migrate               Upgrade schema; starts providers/builds a missing image
+          make migration MESSAGE="description"  Generate LOCAL revision; review before use
+          make migration-check       Check selected schema/model drift (requires migration)
+DOCKER    make build                 Refresh runtime image after source/dependency/schema edits
+          make run                   Docker LOCAL app; migrate first (never auto-migrates)
+          make logs                  Recent selected-stack logs
+TEST      .venv/bin/python -m pytest tests/unit  Fast, Docker-free feedback after setup
+          make unit                  Network-disabled container unit suite
+          make integration           Owned disposable TEST providers + integration suite
+          make test                  Unit + integration once, isolated providers
+          make coverage              Full application suite + terminal coverage
+          make tooling               Provider-free workflow tests in a container
+          make test-providers        Optional foreground owned TEST session for IDE debugging
+QUALITY   make check                 Ruff lint/format and strict mypy, no edits
+RELEASE   make smoke                 Built disposable DEV HTTP smoke
+          make certify-host          Host acceptance; requires setup; no IDE UI claim
+          make certify               Quality/tooling/coverage/smoke/lifecycle/failure acceptance
+SHUTDOWN  make providers-stop        Stop LOCAL providers only; preserve database data
+          make stop                  Remove selected Docker containers/network; preserve DB
+Default ENV=local. Docker/database commands also accept ENV=dev; providers are LOCAL only.
+Run setup once; daily: providers -> IDE Run. Rebuild/migrate after relevant changes.
+TEST is automatic. Release checks are heavier. No command stages, commits or publishes.
 """
 
 
@@ -85,6 +89,9 @@ def install_signals():
 
 
 def setup(directory=ROOT):
+    from python_environment import bootstrap
+
+    bootstrap(Path(directory))
     for tool in ("docker", "make"):
         if shutil.which(tool) is None:
             raise RuntimeError(f"Required tool missing: {tool}")
@@ -148,7 +155,7 @@ def setup(directory=ROOT):
                     stack.compose("rm", "-f", "postgres")
 
     setup_files(directory, has_volume=has_volume, verify=verify)
-    print("Next: make providers ENV=local; make build ENV=local; make migrate ENV=local")
+    print("Next: make doctor; make providers; make migrate; run .venv/bin/python src/main.py")
 
 
 def read_settings(path, mode="local"):
@@ -401,6 +408,9 @@ def check():
 
 def doctor():
     """Read-only prerequisites and private configuration validation."""
+    from python_environment import verify
+
+    verify(ROOT)
     interpreter = shutil.which("python3.12")
     if interpreter is None and sys.version_info[:2] == (3, 12):
         interpreter = sys.executable
@@ -427,6 +437,12 @@ def doctor():
     for env in ("local", "dev"):
         read_settings(ROOT / ".env.local", env)
         print(f"OK {env.upper()} private configuration")
+    schema.read_private(ROOT / ".env.test", frozenset(schema.POLICY_DEFAULTS))
+    schema.test_policy(ROOT)
+    print("OK TEST policy (no provider endpoints)")
+    from diagnostics import check_ports
+
+    check_ports(ROOT)
     print("Doctor: PASS (read-only)")
 
 
@@ -513,6 +529,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, schema.EnvironmentError, subprocess.CalledProcessError) as exc:
         print(f"Workflow failed: {exc}", file=sys.stderr)
         sys.exit(exc.returncode if isinstance(exc, subprocess.CalledProcessError) else 1)

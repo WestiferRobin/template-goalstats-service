@@ -71,7 +71,7 @@ def test_file_location_does_not_depend_on_cwd(host_file, tmp_path, monkeypatch, 
 
 def test_missing_file_is_actionable(host_file):
     host_file.unlink()
-    with pytest.raises(ConfigurationError, match="make providers ENV=local"):
+    with pytest.raises(ConfigurationError, match="make providers"):
         host.load_host_config({})
 
 

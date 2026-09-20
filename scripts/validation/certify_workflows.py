@@ -20,7 +20,6 @@ from workflow import (
     install_signals,
     inventory,
     run,
-    setup,
     tests,
     wait_ready,
 )
@@ -147,6 +146,17 @@ def signal_cleanup(signum):
     print(f"Signal {signum} cleanup: PASS", flush=True)
 
 
+def certify_configuration(config_dir):
+    """No provider namespace exists for this empty temporary config directory."""
+    from environment_setup import setup_files
+
+    for _ in range(2):
+        before = {p.name: p.read_bytes() for p in config_dir.iterdir()}
+        setup_files(config_dir, has_volume=lambda mode: False, verify=lambda mode, values: None)
+        if before:
+            assert before == {p.name: p.read_bytes() for p in config_dir.iterdir()}
+
+
 def certify():
     check()
     tests("tooling")
@@ -178,10 +188,7 @@ def certify():
         )
         with tempfile.TemporaryDirectory() as directory:
             config_dir = Path(directory)
-            setup(config_dir)
-            before = {p.name: p.read_bytes() for p in config_dir.iterdir()}
-            setup(config_dir)
-            assert before == {p.name: p.read_bytes() for p in config_dir.iterdir()}
+            certify_configuration(config_dir)
         markers = []
         for stack in stacks:
             stack.compose("build", "app")

@@ -1,117 +1,105 @@
 # GoalStats Flask service template
 
 Python 3.12, Flask/Gunicorn, PostgreSQL/SQLAlchemy/Alembic, Redis,
-Marshmallow/flask-smorest, and pytest. Item + Action demonstrate the architecture.
+Marshmallow/flask-smorest and pytest. Item + Action are the reference domain.
+Flat `src/`; factory: `main:create_app()`; one pinned `requirements.txt`.
 
-## Prerequisites and setup
+## First time: host / IDE development
 
-Install Python 3.12, GNU Make, and Docker with Compose v2; start Docker Desktop
-on macOS. Application dependencies install in Docker from `requirements.txt`.
+Install **Python 3.12, GNU Make and Docker with Compose**. Start Docker Desktop
+on macOS. From the repository root:
 
 ```sh
 make help
 make setup
 make doctor
+make providers
+make migrate
+.venv/bin/python src/main.py
 ```
 
-Setup creates private `.env.local`/`.env.test` files and preserves
-existing values. These files are ignored by Git. Doctor is read-only.
+Setup creates/reuses `.venv`, installs/verifies requirements and creates private,
+ignored `.env.local` (machine configuration) and `.env.test` (TEST policy only).
+It preserves existing credentials and valid installations. It never starts the
+normal application or migrates its database. Existing legacy configuration may
+require a brief PostgreSQL authentication check before safe migration.
 
-## Run LOCAL or DEV
+Providers starts only PostgreSQL and Redis. Migrate starts providers if necessary
+and builds a missing runtime image automatically. Neither command starts Flask.
+
+Open **<http://127.0.0.1:5300/swagger>**. `/health` checks liveness; `/ready` checks
+providers and schema. Startup never migrates automatically.
+
+**PyCharm:** select `.venv/bin/python`, open `src/main.py`, click Run/Debug.
+**VS Code:** select `.venv`, choose **Flask: host LOCAL**, press F5.
+No environment profile, env-file setting or manual URLs are needed. `src/` as a
+Sources Root is optional editor assistance. The direct entrypoint works from the
+root or `src/` directory, binds loopback, and disables Flask debugger/reloader.
+
+## Daily development
 
 ```sh
-make build ENV=local
-make migrate ENV=local
-make run ENV=local
+make providers
+# IDE Run/Debug src/main.py, or:
+.venv/bin/python src/main.py
 ```
 
-LOCAL reloads source; Swagger is at <http://127.0.0.1:5100/swagger>.
+Host source edits need an application restart. After dependency changes, run
+`make setup` and `make build`. After migration changes, run `make build` then
+`make migrate`: an existing image is reused until explicitly rebuilt.
+
+To stop: stop the application in the IDE or with Ctrl-C, then:
 
 ```sh
-make build ENV=dev
-make migrate ENV=dev
-make run ENV=dev
+make providers-stop
 ```
 
-DEV uses built non-root Gunicorn without source mounts; Swagger is at
-<http://127.0.0.1:5200/swagger>. Rebuild after source/dependency/migration changes.
-`run` never applies migrations. Ports can be changed in the private env files.
+PostgreSQL data persists. Redis is disposable cache data. Never delete a database
+volume to repair a password mismatch; restore its original configuration.
 
-`make logs ENV=local|dev` shows logs. `make stop ENV=local|dev` removes that stack's
-containers/network but preserves its PostgreSQL volume. Redis is ephemeral.
-
-## Validate and migrate
+## Tests and quality
 
 ```sh
-make check
-make unit
-make integration
-make test
-make coverage
-make tooling
-make smoke
-make certify
-make migration MESSAGE="describe schema change"
-make migration-check ENV=local
+.venv/bin/python -m pytest tests/unit  # fast feedback, no Docker/providers/env files
+make check                           # lint, format check, strict mypy
+make integration                     # automatic owned disposable TEST providers
+make test                            # unit + integration
 ```
 
-Application tests, tooling tests, and built-system smoke have separate ownership.
-TEST/smoke/certification use disposable providers and preserve developer data.
-Migration creation is LOCAL-only, writes to `alembic/`, and requires review.
-No command stages, commits, pushes, or deploys.
+`make unit` provides containerized unit verification. `make coverage` reports full
+application coverage; `make tooling` tests workflow code. For individual IDE
+integration tests, leave `make test-providers` running in a terminal; stop it with
+Ctrl-C afterward. Never point destructive tests at LOCAL/DEV providers.
 
-**DEPENDENCY FILES: requirements.txt ONLY**
+Before a release/template change: `make smoke`, `make certify-host`, and
+`make certify`. These heavier checks create and clean isolated resources; they do
+not replace quick unit feedback. `make migration-check` checks model/schema drift.
+Schema authors use `make migration MESSAGE="description"` and review the result.
 
-Optional host tooling: `python3.12 -m venv .venv`, then
-`.venv/bin/python -m pip install -r requirements.txt`.
-
-See the [documentation index](docs/README.md),
-[architecture/API contracts](docs/service/architecture.md),
-[developer workflow](docs/service/development.md), and
-[Make interface](docs/interface/make.md).
-
-## Flat source layout
-
-Application modules live directly under `src/`: `main.py`, `composition.py`,
-`enums/`, `exceptions/`, `settings/`, `models/`, `schemas/`, `infra/`, `services/`,
-and `routers/`. The factory is `main:create_app()`; no intermediate service package
-is present. See [template anchors and execution paths](docs/standard/template.md).
-
-## IDE DEVELOPMENT
-
-Host development is additive; all Docker commands above remain supported.
+## Docker application alternative
 
 ```sh
-# once
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-make setup
-
-# providers (no app and no automatic migrations)
-make providers ENV=local
-make migrate ENV=local
-
-# then: PyCharm → Run/Debug src/main.py; VS Code → Flask: host LOCAL
-# Docker-free unit tests
-.venv/bin/python -m pytest tests/unit
-# canonical complete integration suite
-make integration
-# optional foreground session for IDE integration debugging
-make test-providers
-# stop providers, preserving PostgreSQL data
-make providers-stop ENV=local
+make build
+make migrate
+make run
+make logs
+make stop
 ```
 
-In PyCharm select `.venv/bin/python`, open `src/main.py`, and click Run/Debug.
-No custom environment variables, env-file profile, or Flask configuration is needed.
-Marking `src/` as Sources Root is optional editor assistance, not a runtime requirement.
-In VS Code select the workspace `.venv` and **Flask: host LOCAL** (F5).
-Both IDEs and `python src/main.py` use the same direct-only loader for the repository's
-private `.env.local`, independently of working directory. The host server binds
-`127.0.0.1:5300`; the IDE owns debugging. No reloader or built-in debugger is enabled.
-The imported factory remains `main:create_app()` and never loads host configuration.
+LOCAL uses mounted source/reload at <http://127.0.0.1:5100/swagger>. Add `ENV=dev`
+to these commands for built non-root Gunicorn at <http://127.0.0.1:5200/swagger>.
+DEV has separate credentials/data and no source mount; rebuild after source edits.
+Both modes use `.env.local`. `stop` removes selected containers/network but keeps
+PostgreSQL data. `ENV=local` is the default, not required typing.
 
-Rebuild after dependency or migration changes, then migrate for new revisions.
-Host source edits need only an IDE restart; Docker DEV source edits require rebuild.
-Reinstall requirements after dependency changes. See [IDE setup and safety](docs/service/development.md#ide-development)
-and [owned integration debugging](docs/testing/overview.md#ide-integration-debugging).
+## Troubleshooting and reference
+
+Run `make doctor` for read-only interpreter, dependencies, Docker, configuration
+and port checks. Stop a running host app before checking its port availability.
+Change machine ports/preferences only in private `.env.local`; defaults are host
+5300, Docker LOCAL 5100, DEV 5200, PostgreSQL 55432 and Redis 56379.
+
+`make help` discovers commands; this README owns onboarding; [docs](docs/README.md)
+explain [architecture](docs/service/architecture.md), [configuration](docs/service/environment.md),
+[Make behavior](docs/interface/make.md), [testing](docs/testing/overview.md) and
+[certification](docs/testing/certification.md). No workflow stages, commits or pushes.

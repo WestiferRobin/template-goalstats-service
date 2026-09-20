@@ -23,9 +23,9 @@ supported built-system entrypoint: direct smoke selection additionally requires 
 owned runtime configuration. Tooling tests live in `scripts/tests`; `make tooling`
 and certification run them separately from application unit/integration ownership.
 
-Provider fixtures require explicitly disposable resources. Missing provider URLs in
-manual pytest runs produce explained skips; Make provisions providers, so canonical
-integration/full/coverage runs must have zero skips. Invalid or unavailable supplied
+Provider fixtures require explicitly disposable resources. Missing or unverified ownership in
+manual pytest runs fails with guidance to start `make test-providers`; Make provisions
+providers automatically, so canonical integration/full/coverage runs have zero skips. Invalid or unavailable supplied
 providers fail. PostgreSQL uses a dedicated `goalstats_test_*` database within an
 ownership-verified disposable provider; that name alone is not proof. Redis keys
 use fixture prefixes, and tests that change server-wide ACL state require the same

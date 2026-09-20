@@ -34,7 +34,9 @@ make migration MESSAGE="describe the change"
 make migration-check ENV=local
 ```
 
-`setup` creates `.env.local` and `.env.test`, preserves valid canonical files, and safely migrates legacy configuration. `doctor` only diagnoses. `run` requires an already
+`setup` creates/reuses Python 3.12 `.venv`, installs/verifies the pinned requirements,
+and creates `.env.local` and `.env.test`, preserves valid canonical files, and safely migrates legacy configuration. `doctor` only diagnoses: venv/version/pins/pip consistency, Docker, both configuration
+files, repository anchors and ports. Stop a running host app before a free-port check. `run` requires an already
 migrated database and never applies migrations. `stop` retains developer DB volumes.
 `migration` requires LOCAL and a nonblank message; it writes to `alembic/` for review.
 
@@ -66,8 +68,8 @@ successful suites. Commands propagate failures and do not stage, commit, or depl
 owns `certify-host`; Python orchestration implements them. Provider targets reject
 `ENV=dev`. Normal `integration`, `test`, `migrate`, `smoke`, and `certify` retain their
 existing workflows. Host certification is additive and allocates its own ports.
-See the [README workflow](../../README.md#ide-development) for initial IDE setup.
+See the [README workflow](../../README.md#first-time-host--ide-development) for initial IDE setup.
 
 After `providers ENV=local` and `migrate ENV=local`, run/debug `src/main.py` directly:
-it loads the prepared host file without IDE environment configuration. No `make ide`
+it derives host URLs from canonical `.env.local` without IDE environment configuration. No `make ide`
 command is needed. Rebuild an existing image when dependencies or migrations change.
