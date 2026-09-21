@@ -8,12 +8,12 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DataError, IntegrityError
 
 from enums.item import ItemStatus
-from errors import ItemNotFound
+from exceptions.item import ItemNotFound
 from infra.repositories.action import ActionRepository
 from infra.repositories.item import ItemRepository
 from models.action import Action
 from models.item import Item
-from schemas.item import ItemUpdate
+from schemas.item import ItemUpdateRequest
 from services.item import ItemService
 
 pytestmark = pytest.mark.postgres
@@ -128,7 +128,7 @@ def test_concurrent_update_delete_has_no_unhandled_stale_row(postgres_app):
         barrier.wait(timeout=5)
         try:
             ItemService(db, cache).update(
-                identity, ItemUpdate(name="updated", status=ItemStatus.ARCHIVED)
+                identity, ItemUpdateRequest(name="updated", status=ItemStatus.ARCHIVED)
             )
             return "updated"
         except ItemNotFound:

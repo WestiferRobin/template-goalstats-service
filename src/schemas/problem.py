@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class ProblemDetails(BaseModel):
+class ProblemDetailSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     type: str
     title: str

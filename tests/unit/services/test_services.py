@@ -8,12 +8,13 @@ from pydantic import ValidationError
 
 from enums.action import ActionType
 from enums.item import ItemStatus
-from errors import ActionNotFound, ItemNotFound
+from exceptions.action import ActionNotFound
+from exceptions.item import ItemNotFound
 from infra.caches.action import ActionCache
 from infra.repositories.action import ActionRepository
 from infra.repositories.item import ItemRepository
-from schemas.action import ActionCreate, ActionResponse, ActionWrite
-from schemas.item import ItemCreate, ItemResponse, ItemUpdate
+from schemas.action import ActionCreateRequest, ActionResponse, ActionWriteRequest
+from schemas.item import ItemCreateRequest, ItemResponse, ItemUpdateRequest
 from services.action import ActionService
 
 
@@ -37,10 +38,10 @@ def test_cache_hit_decisions(graph):
 def test_lists_are_uncached_and_creation_does_not_fill(graph):
     assert len(graph.service.list()) == 1
     result = (
-        graph.service.create(ItemCreate(name="new"))
+        graph.service.create(ItemCreateRequest(name="new"))
         if graph.kind == "item"
         else graph.service.create(
-            ActionCreate(itemId=graph.row.item_id, name="new", type=ActionType.CREATE)
+            ActionCreateRequest(itemId=graph.row.item_id, name="new", type=ActionType.CREATE)
         )
     )
     assert result.name == "new"
@@ -56,9 +57,9 @@ def test_successful_mutation_invalidates_after_commit(graph, operation):
     else:
         result = graph.service.update(
             graph.row.id,
-            ItemUpdate(name="new", status=ItemStatus.ARCHIVED)
+            ItemUpdateRequest(name="new", status=ItemStatus.ARCHIVED)
             if graph.kind == "item"
-            else ActionWrite(name="new", type=ActionType.UPDATE),
+            else ActionWriteRequest(name="new", type=ActionType.UPDATE),
         )
         assert result.created_at == datetime(2026, 1, 1, tzinfo=UTC)
         assert result.updated_at > result.created_at
@@ -76,16 +77,16 @@ def test_failed_mutation_never_mutates_cache(graph, failure, operation):
     with pytest.raises(RuntimeError):
         if operation == "create":
             graph.service.create(
-                ItemCreate(name="new")
+                ItemCreateRequest(name="new")
             ) if graph.kind == "item" else graph.service.create(
-                ActionCreate(itemId=graph.row.item_id, name="new", type=ActionType.CREATE)
+                ActionCreateRequest(itemId=graph.row.item_id, name="new", type=ActionType.CREATE)
             )
         elif operation == "update":
             graph.service.update(
                 graph.row.id,
-                ItemUpdate(name="new", status=ItemStatus.ACTIVE)
+                ItemUpdateRequest(name="new", status=ItemStatus.ACTIVE)
                 if graph.kind == "item"
-                else ActionWrite(name="new", type=ActionType.UPDATE),
+                else ActionWriteRequest(name="new", type=ActionType.UPDATE),
             )
         else:
             graph.service.delete(graph.row.id)
@@ -103,20 +104,20 @@ def test_missing_resource_and_invalid_direct_calls(graph):
     with pytest.raises(error):
         graph.service.update(
             graph.row.id,
-            ItemUpdate(name="valid", status=ItemStatus.ACTIVE)
+            ItemUpdateRequest(name="valid", status=ItemStatus.ACTIVE)
             if graph.kind == "item"
-            else ActionWrite(name="valid", type=ActionType.UPDATE),
+            else ActionWriteRequest(name="valid", type=ActionType.UPDATE),
         )
     with pytest.raises(ValidationError):
         graph.service.get(UUID(int=0))
     with pytest.raises(ValidationError):
-        ItemUpdate(name=" ", status="invalid") if graph.kind == "item" else ActionWrite(
-            name=" ", type="invalid"
-        )
+        ItemUpdateRequest(
+            name=" ", status="invalid"
+        ) if graph.kind == "item" else ActionWriteRequest(name=" ", type="invalid")
     with pytest.raises(ValidationError):
-        ItemUpdate(name="valid", status="invalid") if graph.kind == "item" else ActionWrite(
-            name="valid", type="invalid"
-        )
+        ItemUpdateRequest(
+            name="valid", status="invalid"
+        ) if graph.kind == "item" else ActionWriteRequest(name="valid", type="invalid")
 
 
 def test_action_parent_missing_and_stale_child_guard():
@@ -135,7 +136,7 @@ def test_action_parent_missing_and_stale_child_guard():
     service = ActionService(db, cache, lambda session: repo, lambda session: parents)
     parents.get_by_id.return_value = None
     with pytest.raises(ItemNotFound):
-        service.create(ActionCreate(itemId=uuid4(), name="x", type=ActionType.CREATE))
+        service.create(ActionCreateRequest(itemId=uuid4(), name="x", type=ActionType.CREATE))
     with pytest.raises(ItemNotFound):
         service.list(uuid4())
     repo.add.assert_not_called()
@@ -229,9 +230,9 @@ def test_shared_service_overlapping_operations_are_isolated(kind, fail_one):
 
     def update(index):
         command = (
-            ItemUpdate(name=f"operation-{index}", status=ItemStatus.ARCHIVED)
+            ItemUpdateRequest(name=f"operation-{index}", status=ItemStatus.ARCHIVED)
             if kind == "item"
-            else ActionWrite(name=f"operation-{index}", type=ActionType.UPDATE)
+            else ActionWriteRequest(name=f"operation-{index}", type=ActionType.UPDATE)
         )
         return service.update(identities[index], command)
 

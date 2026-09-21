@@ -4,8 +4,8 @@ from flask_openapi3.blueprint import APIBlueprint
 from pydantic import BaseModel, ConfigDict
 from werkzeug.exceptions import BadRequest
 
-from errors import DomainError
-from routers.errors import object_body
+from exceptions.base import DomainError
+from exceptions.handlers import object_body
 
 
 @pytest.fixture

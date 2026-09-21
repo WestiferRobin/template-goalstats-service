@@ -4,9 +4,15 @@ from flask import Response, jsonify, url_for
 from flask_openapi3.blueprint import APIBlueprint
 from flask_openapi3.models.tag import Tag
 
-from routers.errors import object_body
+from exceptions.handlers import object_body
 from routers.openapi import created_response, errors
-from schemas.item import ItemCreate, ItemListResponse, ItemPath, ItemResponse, ItemUpdate
+from schemas.item import (
+    ItemCreateRequest,
+    ItemListResponse,
+    ItemPathSchema,
+    ItemResponse,
+    ItemUpdateRequest,
+)
 from services.item import ItemService
 
 
@@ -26,7 +32,7 @@ def create_items_blueprint(service: ItemService) -> APIBlueprint:
     @blueprint.post(
         "/items", responses={201: created_response(ItemResponse), 404: errors()["default"]}
     )
-    def create(body: ItemCreate) -> Response:
+    def create(body: ItemCreateRequest) -> Response:
         result = service.create(body)
         response = jsonify(result.model_dump(mode="json", by_alias=True))
         response.status_code = 201
@@ -34,15 +40,15 @@ def create_items_blueprint(service: ItemService) -> APIBlueprint:
         return response
 
     @blueprint.get("/items/<uuid:item_id>", responses={200: ItemResponse, 404: errors()["default"]})
-    def get_one(path: ItemPath) -> Response:
+    def get_one(path: ItemPathSchema) -> Response:
         return jsonify(service.get(path.item_id).model_dump(mode="json", by_alias=True))
 
     @blueprint.put("/items/<uuid:item_id>", responses={200: ItemResponse, 404: errors()["default"]})
-    def update(path: ItemPath, body: ItemUpdate) -> Response:
+    def update(path: ItemPathSchema, body: ItemUpdateRequest) -> Response:
         return jsonify(service.update(path.item_id, body).model_dump(mode="json", by_alias=True))
 
     @blueprint.delete("/items/<uuid:item_id>", responses={204: None, 404: errors()["default"]})
-    def delete(path: ItemPath) -> Response:
+    def delete(path: ItemPathSchema) -> Response:
         service.delete(path.item_id)
         return Response(status=204)
 

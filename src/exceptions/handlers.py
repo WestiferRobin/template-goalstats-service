@@ -6,13 +6,17 @@ from flask import Flask, Response, current_app, jsonify
 from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
-from errors import ActionNotFound, DomainError, ItemNotFound, RequestValidationError
-from schemas.problem import ProblemDetails
+from exceptions.action import ActionNotFound
+from exceptions.base import DomainError
+from exceptions.item import ItemNotFound
+from schemas.problem import ProblemDetailSchema
+
+_INVALID_VALUES_DETAIL = "The request contains invalid values."
 
 
 def problem(status: int, detail: str) -> Response:
     response = jsonify(
-        ProblemDetails(
+        ProblemDetailSchema(
             type="about:blank", title=HTTPStatus(status).phrase, status=status, detail=detail
         ).model_dump(mode="json")
     )
@@ -36,7 +40,7 @@ def register_error_handlers(app: Flask) -> None:
             404: "The requested resource was not found.",
             405: "The request method is not allowed for this resource.",
             415: "The request media type is not supported.",
-            422: RequestValidationError.public_detail,
+            422: _INVALID_VALUES_DETAIL,
         }.get(
             status, HTTPStatus(status).phrase if status < 500 else "An unexpected error occurred."
         )
@@ -56,7 +60,7 @@ def register_error_handlers(app: Flask) -> None:
 def request_validation(error: ValidationError) -> Response:
     detail = "The request could not be understood."
     if any(issue["loc"] in {("item_id",), ("action_id",)} for issue in error.errors()):
-        detail = RequestValidationError.public_detail
+        detail = _INVALID_VALUES_DETAIL
     return problem(400, detail)
 
 

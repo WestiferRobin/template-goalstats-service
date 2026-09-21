@@ -5,12 +5,12 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from enums.item import ItemStatus
-from errors import ItemNotFound
+from exceptions.item import ItemNotFound
 from infra.caches.item import ItemCache
 from infra.repositories.item import ItemRepository
 from infra.resources.db import Database
 from models.item import Item
-from schemas.item import ItemCreate, ItemPath, ItemResponse, ItemUpdate
+from schemas.item import ItemCreateRequest, ItemPathSchema, ItemResponse, ItemUpdateRequest
 
 
 class ItemService:
@@ -30,7 +30,7 @@ class ItemService:
             ]
 
     def get(self, item_id: UUID) -> ItemResponse:
-        item_id = ItemPath(item_id=item_id).item_id
+        item_id = ItemPathSchema(item_id=item_id).item_id
         cached = self.cache.get(item_id)
         if cached is not None:
             return cached
@@ -42,15 +42,15 @@ class ItemService:
         self.cache.set(result)
         return result
 
-    def create(self, command: ItemCreate) -> ItemResponse:
+    def create(self, command: ItemCreateRequest) -> ItemResponse:
         with self.database.transaction() as session:
             item = Item(name=command.name, status=ItemStatus.ACTIVE)
             self.repository(session).add(item)
             result = ItemResponse.model_validate(item, by_name=True, by_alias=False)
         return result
 
-    def update(self, item_id: UUID, command: ItemUpdate) -> ItemResponse:
-        item_id = ItemPath(item_id=item_id).item_id
+    def update(self, item_id: UUID, command: ItemUpdateRequest) -> ItemResponse:
+        item_id = ItemPathSchema(item_id=item_id).item_id
         with self.database.transaction() as session:
             repo = self.repository(session)
             item = repo.get_by_id(item_id, for_update=True)
@@ -67,7 +67,7 @@ class ItemService:
         return result
 
     def delete(self, item_id: UUID) -> None:
-        item_id = ItemPath(item_id=item_id).item_id
+        item_id = ItemPathSchema(item_id=item_id).item_id
         with self.database.transaction() as session:
             repo = self.repository(session)
             item = repo.get_by_id(item_id, for_update=True)

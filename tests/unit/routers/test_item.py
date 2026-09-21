@@ -4,9 +4,9 @@ from uuid import uuid4
 
 from flask_openapi3.openapi import OpenAPI
 
-from routers.errors import register_error_handlers, request_validation
+from exceptions.handlers import register_error_handlers, request_validation
 from routers.item import create_items_blueprint
-from schemas.item import ItemCreate, ItemResponse, ItemUpdate
+from schemas.item import ItemCreateRequest, ItemResponse, ItemUpdateRequest
 from services.item import ItemService
 
 
@@ -34,13 +34,15 @@ def test_item_router_uses_only_its_explicit_service():
     assert response.status_code == 201
     assert response.headers["Location"] == path
     assert response.json == expected
-    service.create.assert_called_once_with(ItemCreate(name="Item"))
+    service.create.assert_called_once_with(ItemCreateRequest(name="Item"))
     assert client.get(path).json == expected
     service.get.assert_called_once_with(result.id)
     assert client.get("/items").json == [expected]
     service.list.assert_called_once_with()
     assert client.put(path, json={"name": "Item", "status": "active"}).json == expected
-    service.update.assert_called_once_with(result.id, ItemUpdate(name="Item", status="active"))
+    service.update.assert_called_once_with(
+        result.id, ItemUpdateRequest(name="Item", status="active")
+    )
     response = client.delete(path)
     assert response.status_code == 204 and response.data == b""
     service.delete.assert_called_once_with(result.id)

@@ -13,7 +13,9 @@ def errors() -> ResponseDict:
     problem = {
         "description": "Request or application failure",
         "content": {
-            "application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}
+            "application/problem+json": {
+                "schema": {"$ref": "#/components/schemas/ProblemDetailSchema"}
+            }
         },
     }
     return {"default": problem, "400": problem}

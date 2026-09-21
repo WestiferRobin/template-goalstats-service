@@ -4,9 +4,9 @@ from uuid import uuid4
 
 from flask_openapi3.openapi import OpenAPI
 
+from exceptions.handlers import register_error_handlers, request_validation
 from routers.action import create_actions_blueprint
-from routers.errors import register_error_handlers, request_validation
-from schemas.action import ActionCreate, ActionResponse, ActionWrite
+from schemas.action import ActionCreateRequest, ActionResponse, ActionWriteRequest
 from services.action import ActionService
 
 
@@ -32,7 +32,7 @@ def test_action_router_uses_only_its_explicit_service_including_nested_operation
     path, nested = f"/actions/{result.id}", f"/items/{parent}/actions"
     expected = result.model_dump(mode="json", by_alias=True)
     body = {"name": "Action", "type": "create"}
-    command = ActionCreate(**body, itemId=parent)
+    command = ActionCreateRequest(**body, itemId=parent)
 
     for target, payload in (("/actions", {**body, "itemId": str(parent)}), (nested, body)):
         response = client.post(target, json=payload)
@@ -48,7 +48,7 @@ def test_action_router_uses_only_its_explicit_service_including_nested_operation
     assert client.get(nested).json == [expected]
     service.list.assert_called_with(parent)
     assert client.put(path, json=body).json == expected
-    service.update.assert_called_once_with(result.id, ActionWrite(**body))
+    service.update.assert_called_once_with(result.id, ActionWriteRequest(**body))
     response = client.delete(path)
     assert response.status_code == 204 and response.data == b""
     service.delete.assert_called_once_with(result.id)

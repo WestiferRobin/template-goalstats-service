@@ -34,16 +34,16 @@ from flask_openapi3.openapi import OpenAPI
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from exceptions.handlers import register_error_handlers, request_validation
 from infra.caches.action import ActionCache
 from infra.caches.item import ItemCache
 from infra.resources.db import Database, is_ready
 from infra.resources.redis import RedisCache
 from routers.action import create_actions_blueprint
-from routers.errors import register_error_handlers, request_validation
 from routers.health import create_health_blueprint
 from routers.item import create_items_blueprint
 from routers.openapi import create_docs_blueprint
-from schemas.problem import ProblemDetails
+from schemas.problem import ProblemDetailSchema
 from services.action import ActionService
 from services.item import ItemService
 from settings.base import ConfigurationError
@@ -59,7 +59,7 @@ def create_app(config: Settings | Mapping[str, str] | None = None) -> Flask:
         info=Info(title=API_TITLE, version=API_VERSION),
         doc_ui=False,
         validation_error_status=400,
-        validation_error_model=ProblemDetails,
+        validation_error_model=ProblemDetailSchema,
         validation_error_callback=request_validation,
     )
     app.config.update(

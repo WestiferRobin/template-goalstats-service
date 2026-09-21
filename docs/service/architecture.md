@@ -116,7 +116,7 @@ identities and cleanup. No User or prediction domain is present.
 | `main.py` | Factory, explicit resource/cache/service construction, Blueprint registration, direct LOCAL startup diagnostics |
 | `routers/item.py`, `routers/action.py` | Typed HTTP adapters; Action owns nested Item→Action operations |
 | `routers/health.py` | Native Flask health/readiness Blueprint |
-| `routers/errors.py` | HTTP error mapping and object-body request guard |
+| `exceptions/handlers.py` | HTTP error mapping and object-body request guard |
 | `routers/openapi.py` | Generated response metadata and native local Swagger Blueprint |
 | `schemas/item.py`, `schemas/action.py` | Pydantic request, response, path and list schemas |
 | `schemas/common.py`, `schemas/problem.py` | Shared constraints/timestamp codec and Problem Details |
@@ -128,7 +128,7 @@ identities and cleanup. No User or prediction domain is present.
 | `models` | SQLAlchemy database models and one authoritative Base |
 | `enums` | ItemStatus and ActionType |
 | `settings` | Concern-based typed configuration with explicit private file loading |
-| `errors.py` | Safe application errors without HTTP status fields |
+| `exceptions/base.py`, `exceptions/item.py`, `exceptions/action.py` | Application exceptions without HTTP status fields |
 
 All paths are beneath flat `src/`. Package markers are empty; mapped classes are
 imported explicitly wherever metadata registration is required. There is no `src`
@@ -150,3 +150,13 @@ assets, and docs-disabled mode exposes neither the UI, assets nor document.
 Prizm's concern-based settings separation is retained without its platform features,
 process-wide dotenv mutation or cached settings. Gunicorn remains WSGI. No async
 sessions, authentication platform, queues, gRPC or provider registries are introduced.
+
+### API schema naming
+
+Body DTOs use `*Request`; resource/list DTOs use `*Response`; path and shared
+contracts use `*Schema`. Schemas remain flat in `schemas/item.py`,
+`schemas/action.py`, and `schemas/problem.py`. `ActionWriteRequest` is shared by
+Action updates and nested creation; `ActionCreateRequest` adds `itemId`.
+`ProblemDetailSchema` defines the unchanged Problem Details JSON contract.
+The request/problem component names follow these Python names in OpenAPI;
+fields, constraints, statuses and media types are unchanged.

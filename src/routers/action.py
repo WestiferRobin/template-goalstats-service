@@ -4,10 +4,16 @@ from flask import Response, jsonify, url_for
 from flask_openapi3.blueprint import APIBlueprint
 from flask_openapi3.models.tag import Tag
 
-from routers.errors import object_body
+from exceptions.handlers import object_body
 from routers.openapi import created_response, errors
-from schemas.action import ActionCreate, ActionListResponse, ActionPath, ActionResponse, ActionWrite
-from schemas.item import ItemPath
+from schemas.action import (
+    ActionCreateRequest,
+    ActionListResponse,
+    ActionPathSchema,
+    ActionResponse,
+    ActionWriteRequest,
+)
+from schemas.item import ItemPathSchema
 from services.action import ActionService
 
 
@@ -27,7 +33,7 @@ def create_actions_blueprint(service: ActionService) -> APIBlueprint:
     @blueprint.post(
         "/actions", responses={201: created_response(ActionResponse), 404: errors()["default"]}
     )
-    def create(body: ActionCreate) -> Response:
+    def create(body: ActionCreateRequest) -> Response:
         result = service.create(body)
         response = jsonify(result.model_dump(mode="json", by_alias=True))
         response.status_code = 201
@@ -37,17 +43,17 @@ def create_actions_blueprint(service: ActionService) -> APIBlueprint:
     @blueprint.get(
         "/actions/<uuid:action_id>", responses={200: ActionResponse, 404: errors()["default"]}
     )
-    def get_one(path: ActionPath) -> Response:
+    def get_one(path: ActionPathSchema) -> Response:
         return jsonify(service.get(path.action_id).model_dump(mode="json", by_alias=True))
 
     @blueprint.put(
         "/actions/<uuid:action_id>", responses={200: ActionResponse, 404: errors()["default"]}
     )
-    def update(path: ActionPath, body: ActionWrite) -> Response:
+    def update(path: ActionPathSchema, body: ActionWriteRequest) -> Response:
         return jsonify(service.update(path.action_id, body).model_dump(mode="json", by_alias=True))
 
     @blueprint.delete("/actions/<uuid:action_id>", responses={204: None, 404: errors()["default"]})
-    def delete(path: ActionPath) -> Response:
+    def delete(path: ActionPathSchema) -> Response:
         service.delete(path.action_id)
         return Response(status=204)
 
@@ -55,7 +61,7 @@ def create_actions_blueprint(service: ActionService) -> APIBlueprint:
         "/items/<uuid:item_id>/actions",
         responses={200: ActionListResponse, 404: errors()["default"]},
     )
-    def list_actions(path: ItemPath) -> Response:
+    def list_actions(path: ItemPathSchema) -> Response:
         return jsonify(
             ActionListResponse(service.list(path.item_id)).model_dump(mode="json", by_alias=True)
         )
@@ -64,8 +70,8 @@ def create_actions_blueprint(service: ActionService) -> APIBlueprint:
         "/items/<uuid:item_id>/actions",
         responses={201: created_response(ActionResponse), 404: errors()["default"]},
     )
-    def create_action(path: ItemPath, body: ActionWrite) -> Response:
-        command = ActionCreate.model_validate(
+    def create_action(path: ItemPathSchema, body: ActionWriteRequest) -> Response:
+        command = ActionCreateRequest.model_validate(
             {**body.model_dump(by_alias=True), "itemId": path.item_id}
         )
         result = service.create(command)

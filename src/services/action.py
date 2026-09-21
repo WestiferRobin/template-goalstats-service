@@ -4,14 +4,15 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from errors import ActionNotFound, ItemNotFound
+from exceptions.action import ActionNotFound
+from exceptions.item import ItemNotFound
 from infra.caches.action import ActionCache
 from infra.repositories.action import ActionRepository
 from infra.repositories.item import ItemRepository
 from infra.resources.db import Database
 from models.action import Action
-from schemas.action import ActionCreate, ActionPath, ActionResponse, ActionWrite
-from schemas.item import ItemPath
+from schemas.action import ActionCreateRequest, ActionPathSchema, ActionResponse, ActionWriteRequest
+from schemas.item import ItemPathSchema
 
 
 class ActionService:
@@ -27,7 +28,7 @@ class ActionService:
 
     def list(self, item_id: UUID | None = None) -> list[ActionResponse]:
         if item_id is not None:
-            item_id = ItemPath(item_id=item_id).item_id
+            item_id = ItemPathSchema(item_id=item_id).item_id
         with self.database.transaction() as session:
             if item_id is not None and self.parents(session).get_by_id(item_id) is None:
                 raise ItemNotFound()
@@ -37,7 +38,7 @@ class ActionService:
             ]
 
     def get(self, action_id: UUID) -> ActionResponse:
-        action_id = ActionPath(action_id=action_id).action_id
+        action_id = ActionPathSchema(action_id=action_id).action_id
         cached = self.cache.get(action_id)
         with self.database.transaction() as session:
             repo = self.repository(session)
@@ -59,7 +60,7 @@ class ActionService:
             self.cache.set(result)
         return result
 
-    def create(self, command: ActionCreate) -> ActionResponse:
+    def create(self, command: ActionCreateRequest) -> ActionResponse:
         item_id = command.item_id
         with self.database.transaction() as session:
             # Serialize with parent deletion; PostgreSQL still enforces the FK.
@@ -70,8 +71,8 @@ class ActionService:
             result = ActionResponse.model_validate(action, by_name=True, by_alias=False)
         return result
 
-    def update(self, action_id: UUID, command: ActionWrite) -> ActionResponse:
-        action_id = ActionPath(action_id=action_id).action_id
+    def update(self, action_id: UUID, command: ActionWriteRequest) -> ActionResponse:
+        action_id = ActionPathSchema(action_id=action_id).action_id
         with self.database.transaction() as session:
             repo = self.repository(session)
             action = repo.get_by_id(action_id, for_update=True)
@@ -88,7 +89,7 @@ class ActionService:
         return result
 
     def delete(self, action_id: UUID) -> None:
-        action_id = ActionPath(action_id=action_id).action_id
+        action_id = ActionPathSchema(action_id=action_id).action_id
         with self.database.transaction() as session:
             repo = self.repository(session)
             action = repo.get_by_id(action_id, for_update=True)

@@ -53,7 +53,7 @@ is included. PostgreSQL and Redis are the only runtime providers.
 `src/main.py` exports `create_app` and explicitly connects application-owned resources,
 cache adapters and services to typed Blueprint factories. Routes capture services directly;
 `app.extensions` retains resource references for diagnostics and cleanup, not service lookup.
-Modules import directly from `enums`, `errors`, `settings`,
+Modules import directly from `enums`, `exceptions`, `settings`,
 `models`, `schemas`, `infra`, `services`, and `routers`. There is no
 intermediate service package and no `src` package to import.
 
@@ -93,3 +93,8 @@ Direct `src/main.py` means LOCAL host development. The `load_local()` helper in
 configuration use `load_application()` without reading machine files. Portable VS Code app launch must not inject
 an env file; PyCharm Python script Run needs no environment profile. Scaffold guards
 must validate this shared loader and preserve its source bytes without identity rewrites.
+
+API body DTOs use `*Request`, resource/list DTOs use `*Response`, and path/shared
+contracts use `*Schema` (including `ProblemDetailSchema`). Domain exceptions live
+in `exceptions/base.py`, `item.py`, and `action.py`; Flask handling lives in
+`exceptions/handlers.py`. Package markers remain empty.

@@ -16,7 +16,7 @@ def test_exact_route_and_openapi_resource_contract(app):
             assert "default" in response
             assert (
                 response["default"]["content"]["application/problem+json"]["schema"]["$ref"]
-                == "#/components/schemas/ProblemDetails"
+                == "#/components/schemas/ProblemDetailSchema"
             )
         if "post" in methods:
             assert "Location" in operations["post"]["responses"]["201"]["headers"]
@@ -24,11 +24,11 @@ def test_exact_route_and_openapi_resource_contract(app):
     schemas = spec["components"]["schemas"]
     assert schemas["ItemStatus"]["enum"] == ["active", "archived"]
     assert schemas["ActionType"]["enum"] == ["create", "update", "delete"]
-    assert "itemId" not in schemas["ActionWrite"]["properties"]
-    assert "itemId" in schemas["ActionCreate"]["required"]
-    assert schemas["ItemCreate"]["additionalProperties"] is False
-    assert schemas["ItemCreate"]["properties"]["name"]["maxLength"] == 200
-    assert schemas["ActionCreate"]["properties"]["name"]["maxLength"] == 200
+    assert "itemId" not in schemas["ActionWriteRequest"]["properties"]
+    assert "itemId" in schemas["ActionCreateRequest"]["required"]
+    assert schemas["ItemCreateRequest"]["additionalProperties"] is False
+    assert schemas["ItemCreateRequest"]["properties"]["name"]["maxLength"] == 200
+    assert schemas["ActionCreateRequest"]["properties"]["name"]["maxLength"] == 200
     assert schemas["ItemResponse"]["properties"]["id"]["format"] == "uuid"
     assert schemas["ActionResponse"]["properties"]["createdAt"]["format"] == "date-time"
     # A Blueprint registers one Rule per view; merge methods for the exact route surface.

@@ -152,7 +152,7 @@ def certify_isolated_host():
         ["tests/unit"],
         ["tests/unit/settings"],
         ["tests/unit/test_development_entrypoint.py"],
-        ["tests/unit/test_errors.py::test_validation_error_has_safe_stable_contract"],
+        ["tests/unit/exceptions/test_exceptions.py::test_private_details_are_not_public"],
         ["--collect-only", "tests"],
     ):
         result = run([sys.executable, "-m", "pytest", "-q", *args], env=clean_env(), capture=True)
