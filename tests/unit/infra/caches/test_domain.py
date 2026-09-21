@@ -11,8 +11,8 @@ from enums.item import ItemStatus
 from infra.caches.action import ActionCache
 from infra.caches.item import ItemCache
 from infra.resources.redis import RedisCache
-from schemas.action import ActionResponse
-from schemas.item import ItemResponse
+from schemas.action.responses import ActionResponse
+from schemas.item.responses import ItemResponse
 from settings.environment import load_application
 
 

@@ -10,8 +10,7 @@ def test_responses_are_detached_frozen_and_preserve_wire_timestamps():
     from datetime import UTC, datetime
     from types import SimpleNamespace
 
-    from schemas.action import ActionResponse
-    from schemas.item import ItemListResponse, ItemResponse
+    from schemas.item.responses import ItemListResponse, ItemResponse
 
     now = datetime(2026, 1, 1, tzinfo=UTC)
     identity = UUID(int=1)
@@ -32,8 +31,3 @@ def test_responses_are_detached_frozen_and_preserve_wire_timestamps():
         result.name = "changed"
     with pytest.raises(ValidationError):
         ItemResponse.model_validate({**expected, "createdAt": "2026-01-01T00:00:00"})
-    # Action's payload contains no Item status and retains public aliases.
-    payload = {k: v for k, v in expected.items() if k != "status"}
-    payload.update(itemId=str(identity), type="create")
-    action = ActionResponse.model_validate(payload)
-    assert action.model_dump(mode="json", by_alias=True) == payload

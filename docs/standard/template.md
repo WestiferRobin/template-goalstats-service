@@ -98,3 +98,11 @@ API body DTOs use `*Request`, resource/list DTOs use `*Response`, and path/share
 contracts use `*Schema` (including `ProblemDetailSchema`). Domain exceptions live
 in `exceptions/base.py`, `item.py`, and `action.py`; Flask handling lives in
 `exceptions/handlers.py`. Package markers remain empty.
+
+Domain API contracts live in `schemas/<domain>/requests.py` (`*Request`),
+`responses.py` (`*Response`), and `base.py` (`*Schema`). The latter owns path/query
+schemas and genuine shared domain foundations; it does not require a generic base
+class. Other domain schema files contain `*Schema` contracts only when genuinely
+needed. Shared primitives stay in `schemas/common.py`, and singleton cross-cutting
+contracts such as `schemas/problem.py` need no package hierarchy. Imports name the
+defining module explicitly; empty package markers do not re-export schemas.

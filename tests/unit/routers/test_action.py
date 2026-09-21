@@ -6,7 +6,8 @@ from flask_openapi3.openapi import OpenAPI
 
 from exceptions.handlers import register_error_handlers, request_validation
 from routers.action import create_actions_blueprint
-from schemas.action import ActionCreateRequest, ActionResponse, ActionWriteRequest
+from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
+from schemas.action.responses import ActionResponse
 from services.action import ActionService
 
 

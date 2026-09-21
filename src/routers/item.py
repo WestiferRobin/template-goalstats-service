@@ -6,13 +6,9 @@ from flask_openapi3.models.tag import Tag
 
 from exceptions.handlers import object_body
 from routers.openapi import created_response, errors
-from schemas.item import (
-    ItemCreateRequest,
-    ItemListResponse,
-    ItemPathSchema,
-    ItemResponse,
-    ItemUpdateRequest,
-)
+from schemas.item.base import ItemPathSchema
+from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.responses import ItemListResponse, ItemResponse
 from services.item import ItemService
 
 

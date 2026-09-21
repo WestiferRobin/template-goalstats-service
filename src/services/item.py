@@ -10,7 +10,9 @@ from infra.caches.item import ItemCache
 from infra.repositories.item import ItemRepository
 from infra.resources.db import Database
 from models.item import Item
-from schemas.item import ItemCreateRequest, ItemPathSchema, ItemResponse, ItemUpdateRequest
+from schemas.item.base import ItemPathSchema
+from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.responses import ItemResponse
 
 
 class ItemService:

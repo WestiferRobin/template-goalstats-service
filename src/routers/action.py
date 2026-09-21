@@ -6,14 +6,10 @@ from flask_openapi3.models.tag import Tag
 
 from exceptions.handlers import object_body
 from routers.openapi import created_response, errors
-from schemas.action import (
-    ActionCreateRequest,
-    ActionListResponse,
-    ActionPathSchema,
-    ActionResponse,
-    ActionWriteRequest,
-)
-from schemas.item import ItemPathSchema
+from schemas.action.base import ActionPathSchema
+from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
+from schemas.action.responses import ActionListResponse, ActionResponse
+from schemas.item.base import ItemPathSchema
 from services.action import ActionService
 
 

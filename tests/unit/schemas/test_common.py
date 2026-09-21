@@ -1,35 +1,41 @@
-from uuid import UUID, uuid4
+from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from schemas.action import ActionCreateRequest, ActionWriteRequest
-from schemas.item import ItemCreateRequest, ItemUpdateRequest
+from schemas.common import Identity, Name, Timestamp
 
 
-@pytest.mark.parametrize(
-    "schema,body",
-    [
-        (ItemCreateRequest, {}),
-        (ItemCreateRequest, {"name": None}),
-        (ItemCreateRequest, {"name": ""}),
-        (ItemCreateRequest, {"name": " \t\n"}),
-        (ItemCreateRequest, {"name": "x" * 201}),
-        (ItemCreateRequest, {"name": 12}),
-        (ItemCreateRequest, {"name": "x", "extra": 1}),
-        (ItemUpdateRequest, {"name": "x"}),
-        (ItemUpdateRequest, {"name": "x", "status": "0"}),
-        (ItemUpdateRequest, {"name": "x", "status": 0}),
-        (ItemUpdateRequest, {"name": "x", "status": "invalid"}),
-        (ActionCreateRequest, {"name": "x", "type": "create"}),
-        (ActionCreateRequest, {"name": "x", "type": "create", "itemId": "bad"}),
-        (ActionCreateRequest, {"name": "x", "type": "create", "itemId": str(UUID(int=0))}),
-        (ActionWriteRequest, {"name": "x", "type": "create", "itemId": str(uuid4())}),
-        (ActionWriteRequest, {"name": "x", "type": "delete", "itemId": str(uuid4())}),
-        (ActionWriteRequest, {"name": "x", "type": "0"}),
-        (ActionWriteRequest, {"name": "x", "type": False}),
-    ],
-)
-def test_request_contract_rejects_invalid_values(schema, body):
+@pytest.mark.parametrize("value", [None, "", " \t\n", "x" * 201, 12])
+def test_name_rejects_invalid_values(value):
     with pytest.raises(ValidationError):
-        schema.model_validate(body)
+        TypeAdapter(Name).validate_python(value)
+
+
+def test_name_preserves_whitespace_and_accepts_maximum_length():
+    adapter = TypeAdapter(Name)
+    assert adapter.validate_python(" x ") == " x "
+    assert adapter.validate_python("x" * 200) == "x" * 200
+
+
+@pytest.mark.parametrize("value", [None, "bad", str(UUID(int=0))])
+def test_identity_rejects_invalid_values(value):
+    with pytest.raises(ValidationError):
+        TypeAdapter(Identity).validate_python(value)
+
+
+def test_identity_accepts_uuid_objects_and_strings():
+    adapter = TypeAdapter(Identity)
+    identity = UUID(int=1)
+    assert adapter.validate_python(identity) == identity
+    assert adapter.validate_python(str(identity)) == identity
+
+
+def test_timestamp_requires_timezone_and_preserves_offset_serialization():
+    adapter = TypeAdapter(Timestamp)
+    value = datetime(2026, 1, 1, tzinfo=UTC)
+    assert adapter.validate_python(value.isoformat()) == value
+    assert adapter.dump_python(value, mode="json") == "2026-01-01T00:00:00+00:00"
+    with pytest.raises(ValidationError):
+        adapter.validate_python("2026-01-01T00:00:00")

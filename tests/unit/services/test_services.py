@@ -13,8 +13,10 @@ from exceptions.item import ItemNotFound
 from infra.caches.action import ActionCache
 from infra.repositories.action import ActionRepository
 from infra.repositories.item import ItemRepository
-from schemas.action import ActionCreateRequest, ActionResponse, ActionWriteRequest
-from schemas.item import ItemCreateRequest, ItemResponse, ItemUpdateRequest
+from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
+from schemas.action.responses import ActionResponse
+from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.responses import ItemResponse
 from services.action import ActionService
 
 
