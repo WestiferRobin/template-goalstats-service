@@ -5,7 +5,7 @@ from flask import Flask
 
 from infra.resources.db import Database
 from infra.resources.redis import RedisCache
-from routers.health import create_health_blueprint
+from routers.infra import create_health_blueprint
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,7 @@ def test_health_uses_explicit_resources_only(
         probes.append(actual)
         return database_ready
 
-    monkeypatch.setattr("services.readiness.is_ready", probe)
+    monkeypatch.setattr("infra.base.is_ready", probe)
     app = Flask(__name__)
     app.register_blueprint(create_health_blueprint(database, cache, "explicit-prefix"))
     assert app.extensions == {}

@@ -10,7 +10,7 @@ container on the same private network. Pytest exit status propagates to Make.
 The runner and stack are removed in `finally`, including failed assertions.
 No Docker socket or developer source is mounted into the smoke runner.
 
-`tests/smoke/routers/` owns liveness, readiness, local Swagger/OpenAPI, Item CRUD,
+`tests/smoke/` owns liveness, readiness, local Swagger/OpenAPI, Item CRUD,
 Action CRUD/nesting/cascade, persistence, cache fill/hit/TTL/invalidation, stale-child
 protection, and representative Problem Details checks. These are representative
 built-system checks; exhaustive validation remains integration-owned.

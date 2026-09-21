@@ -2,9 +2,9 @@
 
 from flask import Blueprint, Response
 
+from infra.base import readiness
 from infra.resources.db import Database
 from infra.resources.redis import RedisCache
-from services.readiness import readiness
 
 
 def create_health_blueprint(database: Database, cache: RedisCache, prefix: str) -> Blueprint:

@@ -40,7 +40,7 @@ from infra.caches.item import ItemCache
 from infra.resources.db import Database, is_ready
 from infra.resources.redis import RedisCache
 from routers.action import create_actions_blueprint
-from routers.health import create_health_blueprint
+from routers.infra import create_health_blueprint
 from routers.item import create_items_blueprint
 from routers.openapi import create_docs_blueprint
 from schemas.problem import ProblemDetailSchema

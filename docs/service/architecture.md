@@ -115,13 +115,13 @@ identities and cleanup. No User or prediction domain is present.
 | --- | --- |
 | `main.py` | Factory, explicit resource/cache/service construction, Blueprint registration, direct LOCAL startup diagnostics |
 | `routers/item.py`, `routers/action.py` | Typed HTTP adapters; Action owns nested Item→Action operations |
-| `routers/health.py` | Native Flask health/readiness Blueprint |
+| `routers/infra.py` | Operational HTTP endpoints `/health` and `/ready` |
 | `exceptions/handlers.py` | HTTP error mapping and object-body request guard |
 | `routers/openapi.py` | Generated response metadata and native local Swagger Blueprint |
 | `schemas/item/`, `schemas/action/` | Domain Pydantic contracts: `requests.py`, `responses.py`, and `base.py` |
 | `schemas/common.py`, `schemas/problem.py` | Shared constraints/timestamp codec and Problem Details |
 | `services/item.py`, `services/action.py` | Independent application operations and transaction ownership |
-| `services/readiness.py` | Provider readiness policy |
+| `infra/base.py` | Infrastructure readiness/state evaluation; no HTTP handling |
 | `infra/repositories` | Concrete session-bound SQLAlchemy queries and writes |
 | `infra/caches` | Cache identity, Pydantic payload validation and serialization |
 | `infra/resources` | Engine/sessionmaker and Redis ownership, readiness, disposal |
