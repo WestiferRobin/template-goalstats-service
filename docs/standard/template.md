@@ -99,8 +99,8 @@ contracts use `*Schema` (including `ProblemDetailSchema`). Domain exceptions liv
 in `exceptions/base.py`, `item.py`, and `action.py`; Flask handling lives in
 `exceptions/handlers.py`. Package markers remain empty.
 
-Domain API contracts live in `schemas/<domain>/requests.py` (`*Request`),
-`responses.py` (`*Response`), and `base.py` (`*Schema`). The latter owns path/query
+Domain API contracts live in `schemas/<domain>/request.py` (`*Request`),
+`response.py` (`*Response`), and `base.py` (`*Schema`). The latter owns path/query
 schemas and genuine shared domain foundations; it does not require a generic base
 class. Other domain schema files contain `*Schema` contracts only when genuinely
 needed. Shared primitives stay in `schemas/common.py`, and singleton cross-cutting

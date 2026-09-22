@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from enums.item import ItemStatus
-from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.request import ItemCreateRequest, ItemUpdateRequest
 
 
 @pytest.mark.parametrize(

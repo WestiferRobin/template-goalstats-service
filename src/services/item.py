@@ -11,8 +11,8 @@ from infra.repositories.item import ItemRepository
 from infra.resources.db import Database
 from models.item import Item
 from schemas.item.base import ItemPathSchema
-from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
-from schemas.item.responses import ItemResponse
+from schemas.item.request import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.response import ItemResponse
 
 
 class ItemService:

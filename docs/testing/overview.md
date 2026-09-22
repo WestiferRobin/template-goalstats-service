@@ -6,12 +6,14 @@ INTEGRATION TESTS FOLLOW BOUNDARIES
 
 SMOKE TESTS FOLLOW BUILT SYSTEM
 
-ROUTERS: INTEGRATION
-
 Unit tests cover settings, schemas, service decisions, cache identity/payload logic,
-and safe domain errors. Integration tests exercise Flask binding/OpenAPI/errors,
-real PostgreSQL repositories/constraints/transactions, real Redis behavior, and
-Alembic history. No route unit suite is maintained.
+and safe domain errors. Router unit tests are provider-free and use explicit fake
+or injected collaborators to check HTTP adaptation, service command construction,
+status codes, response bodies, and Location/other headers where appropriate.
+
+Integration tests exercise Flask/flask-openapi3 binding, validation/error handling,
+OpenAPI, real PostgreSQL repositories/constraints/transactions, real Redis behavior,
+and Alembic history. Smoke tests exercise endpoints of the built application.
 
 `tests/fixtures/` owns settings, app factories, disposable database/Redis fixtures,
 named Item/service collaborators, and smoke clients. Root `conftest.py` registers

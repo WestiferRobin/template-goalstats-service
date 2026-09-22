@@ -7,8 +7,8 @@ from flask_openapi3.models.tag import Tag
 from exceptions.handlers import object_body
 from routers.openapi import created_response, errors
 from schemas.action.base import ActionPathSchema
-from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
-from schemas.action.responses import ActionListResponse, ActionResponse
+from schemas.action.request import ActionCreateRequest, ActionWriteRequest
+from schemas.action.response import ActionListResponse, ActionResponse
 from schemas.item.base import ItemPathSchema
 from services.action import ActionService
 

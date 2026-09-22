@@ -1,7 +1,7 @@
 from pydantic import ConfigDict, Field, RootModel
 
 from schemas.common import Identity, Timestamp
-from schemas.item.requests import ItemUpdateRequest
+from schemas.item.request import ItemUpdateRequest
 
 
 class ItemResponse(ItemUpdateRequest):

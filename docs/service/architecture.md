@@ -118,7 +118,7 @@ identities and cleanup. No User or prediction domain is present.
 | `routers/infra.py` | Operational HTTP endpoints `/health` and `/ready` |
 | `exceptions/handlers.py` | HTTP error mapping and object-body request guard |
 | `routers/openapi.py` | Generated response metadata and native local Swagger Blueprint |
-| `schemas/item/`, `schemas/action/` | Domain Pydantic contracts: `requests.py`, `responses.py`, and `base.py` |
+| `schemas/item/`, `schemas/action/` | Domain Pydantic contracts: `request.py`, `response.py`, and `base.py` |
 | `schemas/common.py`, `schemas/problem.py` | Shared constraints/timestamp codec and Problem Details |
 | `services/item.py`, `services/action.py` | Independent application operations and transaction ownership |
 | `infra/base.py` | Infrastructure readiness/state evaluation; no HTTP handling |
@@ -153,8 +153,8 @@ sessions, authentication platform, queues, gRPC or provider registries are intro
 
 ### API schema naming
 
-Each domain owns a schema package: `requests.py` contains `*Request` body DTOs,
-`responses.py` contains `*Response` resource/list DTOs, and `base.py` contains
+Each domain owns a schema package: `request.py` contains `*Request` body DTOs,
+`response.py` contains `*Response` resource/list DTOs, and `base.py` contains
 `*Schema` path/query contracts or genuine reusable domain foundations. `base.py`
 does not require a generic domain base class: ItemPathSchema and ActionPathSchema
 are its current responsibilities. Additional domain files contain `*Schema`
@@ -162,8 +162,8 @@ contracts only when a distinct responsibility requires them.
 
 Cross-domain primitives remain in `schemas/common.py`; singleton contracts such as
 `schemas/problem.py` remain flat. Package markers are empty, and callers import
-from defining modules explicitly, for example `schemas.item.requests` and
-`schemas.item.responses`. `ActionWriteRequest` is shared by Action updates and
+from defining modules explicitly, for example `schemas.item.request` and
+`schemas.item.response`. `ActionWriteRequest` is shared by Action updates and
 nested creation; `ActionCreateRequest` adds `itemId`.
 `ProblemDetailSchema` defines the unchanged Problem Details JSON contract.
 The request/problem component names follow these Python names in OpenAPI;

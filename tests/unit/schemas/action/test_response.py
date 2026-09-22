@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 
 def test_action_list_preserves_aliases_and_freezes_resource():
-    from schemas.action.responses import ActionListResponse, ActionResponse
+    from schemas.action.response import ActionListResponse, ActionResponse
 
     payload = {
         "id": str(UUID(int=1)),

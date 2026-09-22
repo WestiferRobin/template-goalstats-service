@@ -6,8 +6,8 @@ from flask_openapi3.openapi import OpenAPI
 
 from exceptions.handlers import register_error_handlers, request_validation
 from routers.item import create_items_blueprint
-from schemas.item.requests import ItemCreateRequest, ItemUpdateRequest
-from schemas.item.responses import ItemResponse
+from schemas.item.request import ItemCreateRequest, ItemUpdateRequest
+from schemas.item.response import ItemResponse
 from services.item import ItemService
 
 

@@ -12,8 +12,8 @@ from infra.repositories.item import ItemRepository
 from infra.resources.db import Database
 from models.action import Action
 from schemas.action.base import ActionPathSchema
-from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
-from schemas.action.responses import ActionResponse
+from schemas.action.request import ActionCreateRequest, ActionWriteRequest
+from schemas.action.response import ActionResponse
 from schemas.item.base import ItemPathSchema
 
 

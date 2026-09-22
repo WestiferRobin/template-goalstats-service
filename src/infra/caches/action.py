@@ -3,7 +3,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from infra.resources.redis import RedisCache
-from schemas.action.responses import ActionResponse
+from schemas.action.response import ActionResponse
 
 
 class ActionCache:

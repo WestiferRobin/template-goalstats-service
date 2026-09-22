@@ -1,6 +1,6 @@
 from pydantic import ConfigDict, Field, RootModel
 
-from schemas.action.requests import ActionCreateRequest
+from schemas.action.request import ActionCreateRequest
 from schemas.common import Identity, Timestamp
 
 

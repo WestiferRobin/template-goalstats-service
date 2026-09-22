@@ -10,7 +10,7 @@ def test_responses_are_detached_frozen_and_preserve_wire_timestamps():
     from datetime import UTC, datetime
     from types import SimpleNamespace
 
-    from schemas.item.responses import ItemListResponse, ItemResponse
+    from schemas.item.response import ItemListResponse, ItemResponse
 
     now = datetime(2026, 1, 1, tzinfo=UTC)
     identity = UUID(int=1)

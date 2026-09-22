@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from enums.action import ActionType
-from schemas.action.requests import ActionCreateRequest, ActionWriteRequest
+from schemas.action.request import ActionCreateRequest, ActionWriteRequest
 
 
 @pytest.mark.parametrize(
