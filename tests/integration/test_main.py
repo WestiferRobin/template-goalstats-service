@@ -81,10 +81,10 @@ def test_unavailable_database_is_unhealthy_without_provider_details(app):
     assert app.extensions["goalstats_database"].engine.pool.checkedout() == 0
 
 
-def test_openapi_preserves_problem_contract_and_excludes_operational_paths(app):
+def test_openapi_preserves_problem_contract_and_includes_operational_paths(app):
     spec = app.test_client().get("/swagger/v1/swagger.json").json
     assert spec["openapi"] == "3.1.0"
-    assert "/health" not in spec["paths"] and "/ready" not in spec["paths"]
+    assert "/health" in spec["paths"] and "/ready" in spec["paths"]
     assert "/items" in spec["paths"] and "/actions" in spec["paths"]
     assert set(spec["components"]["schemas"]["ProblemDetailSchema"]["required"]) == {
         "type",

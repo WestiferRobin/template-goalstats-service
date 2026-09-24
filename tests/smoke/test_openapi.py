@@ -11,6 +11,8 @@ def test_built_system_swagger_and_openapi(smoke_client):
     assert "SwaggerUIBundle" in js
     spec, _ = smoke_client.request("/swagger/v1/swagger.json")
     assert set(spec["paths"]) == {
+        "/health",
+        "/ready",
         "/items",
         "/items/{item_id}",
         "/actions",

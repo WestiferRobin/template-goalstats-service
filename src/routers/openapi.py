@@ -1,12 +1,12 @@
 """Generated OpenAPI and local Swagger assets; no independently maintained schema."""
 
+from importlib.resources import files
 from typing import Any
 
 from flask import Blueprint, Response, jsonify, send_from_directory
 from flask_openapi3.openapi import OpenAPI
 from flask_openapi3.types import ResponseDict
 from pydantic import BaseModel
-from swagger_ui_bundle import swagger_ui_path
 
 
 def errors() -> ResponseDict:
@@ -56,6 +56,8 @@ def create_docs_blueprint(app: OpenAPI) -> Blueprint:
 
     @blueprint.get("/swagger-assets/<path:filename>")
     def asset(filename: str) -> Response:
-        return send_from_directory(swagger_ui_path, filename)
+        directory = "css" if filename.endswith(".css") else "js"
+        asset_root = files("flask_openapi3_swagger").joinpath("templates", "swagger", directory)
+        return send_from_directory(str(asset_root), filename)
 
     return blueprint

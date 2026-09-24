@@ -103,7 +103,8 @@ and factory construction never connect, migrate, seed, or call external APIs.
 
 Safe Problem Details handlers own validation, domain, framework, and unexpected
 errors. flask-openapi3 generates OpenAPI 3.1.0 documenting resource schemas, enum values, validation statuses,
-canonical Location headers, and the Problem Details response. Meta paths are excluded.
+canonical Location headers, and the Problem Details response. `/health` and `/ready`
+are documented under `infra`, including their plain-text responses and readiness statuses.
 Swagger is served at `/swagger` with local pinned assets and the generated spec at
 `/swagger/v1/swagger.json`. LOCAL reloads source; DEV uses a non-root built Gunicorn
 image; TEST owns disposable providers. See [Development](development.md) for runtime

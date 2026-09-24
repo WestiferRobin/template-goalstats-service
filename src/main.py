@@ -19,7 +19,7 @@ if __name__ == "__main__":
             "sqlalchemy",
             "psycopg",
             "redis",
-            "swagger_ui_bundle",
+            "flask_openapi3_swagger",
         )
     ):
         sys.exit(
@@ -83,7 +83,7 @@ def create_app(config: Settings | Mapping[str, str] | None = None) -> Flask:
     action_service = ActionService(database, action_cache)
     if settings.redis.url is None:
         app.logger.warning("Redis is unconfigured; database fallback is available")
-    app.register_blueprint(
+    app.register_api(
         create_health_blueprint(database, cache, settings.redis.cache_key_prefix)
     )
     app.register_api(create_items_blueprint(item_service))
